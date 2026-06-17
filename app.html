@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>経営管理システム</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a;
+    --txt:#e7eaf0; --muted:#9aa3b2; --accent:#4f8cff; --accent2:#22c55e;
+    --warn:#f59e0b; --danger:#ef4444; --info:#06b6d4; --purple:#a78bfa;
+    --radius:12px; --shadow:0 4px 24px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif;background:var(--bg);color:var(--txt);font-size:14px;line-height:1.5}
+  .app{display:flex;min-height:100vh}
+  .sidebar{width:230px;background:var(--panel);border-right:1px solid var(--line);padding:18px 12px;position:sticky;top:0;height:100vh;overflow-y:auto;flex-shrink:0;display:flex;flex-direction:column}
+  .brand{display:flex;align-items:center;gap:10px;padding:6px 8px 16px}
+  .brand .logo{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--accent),var(--purple));display:grid;place-items:center;font-weight:800;color:#fff}
+  .brand h1{font-size:15px;margin:0;font-weight:700}
+  .brand small{color:var(--muted);font-size:11px}
+  .nav{display:flex;flex-direction:column;gap:2px;margin-top:6px}
+  .nav button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:transparent;border:none;color:var(--muted);padding:10px 12px;border-radius:9px;cursor:pointer;font-size:13.5px;font-family:inherit}
+  .nav button:hover{background:var(--panel2);color:var(--txt)}
+  .nav button.active{background:linear-gradient(90deg,rgba(79,140,255,.18),transparent);color:var(--txt);font-weight:600}
+  .nav .ic{width:18px;text-align:center;opacity:.85}
+  .nav .sect{font-size:10.5px;color:#5c6675;text-transform:uppercase;letter-spacing:.08em;padding:14px 12px 4px;font-weight:700}
+  .userbox{margin-top:auto;border-top:1px solid var(--line);padding-top:12px}
+  .userbox .uname{font-size:13px;font-weight:600;padding:0 8px}
+  .userbox .urole{font-size:11px;color:var(--muted);padding:2px 8px 8px}
+  .main{flex:1;min-width:0;display:flex;flex-direction:column}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 26px;border-bottom:1px solid var(--line);background:rgba(15,17,21,.6);position:sticky;top:0;z-index:20;backdrop-filter:blur(8px)}
+  .topbar h2{margin:0;font-size:18px;white-space:nowrap}
+  .topbar .sub{color:var(--muted);font-size:12px;margin-top:2px}
+  .actions{display:flex;gap:8px;align-items:center}
+  .content{padding:24px 26px;max-width:1400px;width:100%}
+  .btn{background:var(--accent);color:#fff;border:none;padding:8px 14px;border-radius:9px;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;display:inline-flex;align-items:center;gap:6px}
+  .btn:hover{filter:brightness(1.08)}
+  .btn.ghost{background:var(--panel2);color:var(--txt);border:1px solid var(--line)}
+  .btn.sm{padding:5px 10px;font-size:12px}
+  .btn.danger{background:var(--danger)}
+  .btn.block{width:100%;justify-content:center;padding:11px}
+  .grid{display:grid;gap:16px}
+  .kpis{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+  .kpi .label{color:var(--muted);font-size:12px;display:flex;align-items:center;gap:6px}
+  .kpi .val{font-size:26px;font-weight:800;margin-top:8px;letter-spacing:-.02em}
+  .kpi .delta{font-size:12px;margin-top:6px}
+  .up{color:var(--accent2)} .down{color:var(--danger)}
+  .card h3{margin:0 0 14px;font-size:14px;display:flex;align-items:center;justify-content:space-between}
+  .pill{font-size:11px;padding:3px 9px;border-radius:20px;font-weight:600;display:inline-block}
+  .pill.ok{background:rgba(34,197,94,.15);color:#4ade80}
+  .pill.warn{background:rgba(245,158,11,.15);color:#fbbf24}
+  .pill.bad{background:rgba(239,68,68,.15);color:#f87171}
+  .pill.info{background:rgba(6,182,212,.15);color:#22d3ee}
+  .pill.muted{background:var(--panel2);color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em}
+  tbody tr:hover{background:var(--panel2)}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .row-actions{display:flex;gap:6px;justify-content:flex-end}
+  .icon-btn{background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:2px 6px;border-radius:6px}
+  .icon-btn:hover{background:var(--panel2);color:var(--txt)}
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;place-items:center;z-index:100;padding:20px}
+  .modal-bg.show{display:grid}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:540px;width:100%;box-shadow:var(--shadow);max-height:90vh;overflow-y:auto}
+  .modal header{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+  .modal header h3{margin:0;font-size:16px}
+  .modal .body{padding:22px}
+  .modal footer{padding:16px 22px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:10px}
+  .field{margin-bottom:14px}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+  .field input,.field select,.field textarea{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--txt);padding:9px 11px;border-radius:8px;font-size:13px;font-family:inherit}
+  .field input:focus,.field select:focus{outline:none;border-color:var(--accent)}
+  .field.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .field.two label{grid-column:1/-1}
+  .checks{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .checks label{display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--line);padding:8px 10px;border-radius:8px;font-size:12.5px;color:var(--txt);cursor:pointer}
+  .checks input{width:auto}
+  .bars{display:flex;align-items:flex-end;gap:8px;height:180px;padding-top:10px}
+  .bars .bar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;height:100%}
+  .bars .bar .b{width:70%;border-radius:6px 6px 0 0;background:linear-gradient(180deg,var(--accent),rgba(79,140,255,.4));min-height:2px}
+  .bars .bar .b.b2{background:linear-gradient(180deg,var(--accent2),rgba(34,197,94,.4))}
+  .bars .bar small{color:var(--muted);font-size:10.5px}
+  .legend{display:flex;gap:16px;font-size:11.5px;color:var(--muted);margin-top:10px}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:middle}
+  .progress{height:8px;background:var(--panel2);border-radius:20px;overflow:hidden}
+  .progress > i{display:block;height:100%;border-radius:20px;background:var(--accent)}
+  .two-col{display:grid;grid-template-columns:1.4fr 1fr;gap:16px}
+  .three-col{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .donut{display:grid;place-items:center}
+  .alert{padding:12px 14px;border-radius:9px;font-size:13px;margin-bottom:10px;border:1px solid}
+  .alert.warn{background:rgba(245,158,11,.08);border-color:rgba(245,158,11,.3);color:#fbbf24}
+  .alert.bad{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.3);color:#f87171}
+  .alert.ok{background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.3);color:#4ade80}
+  .alert.info{background:rgba(6,182,212,.08);border-color:rgba(6,182,212,.3);color:#22d3ee}
+  .stat-line{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .stat-line:last-child{border-bottom:none}
+  .stat-line b{font-variant-numeric:tabular-nums}
+  .muted{color:var(--muted)}
+  .empty{text-align:center;color:var(--muted);padding:40px}
+  .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+  .toolbar select{background:var(--panel);border:1px solid var(--line);color:var(--txt);padding:7px 11px;border-radius:8px;font-size:13px;font-family:inherit}
+  /* ログイン画面 */
+  .login-wrap{min-height:100vh;display:grid;place-items:center;padding:20px}
+  .login-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:34px;width:100%;max-width:380px;box-shadow:var(--shadow)}
+  .login-card .logo{width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--purple));display:grid;place-items:center;font-weight:800;color:#fff;font-size:20px;margin:0 auto 16px}
+  .login-card h1{text-align:center;font-size:19px;margin:0 0 4px}
+  .login-card p{text-align:center;color:var(--muted);font-size:12px;margin:0 0 22px}
+  .login-err{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#f87171;padding:10px;border-radius:8px;font-size:12.5px;margin-bottom:14px;text-align:center}
+  @media(max-width:760px){
+    .app{flex-direction:column}
+    .sidebar{width:100%;height:auto;position:static;border-right:none;border-bottom:1px solid var(--line);padding:12px}
+    .nav{flex-direction:row;flex-wrap:wrap;gap:4px}
+    .nav .sect{display:none}
+    .nav button{width:auto;padding:7px 10px;font-size:12.5px}
+    .userbox{margin-top:12px}
+    .topbar{flex-direction:column;align-items:flex-start;gap:10px;padding:14px 16px}
+    .topbar h2{white-space:normal;font-size:16px}
+    .actions{flex-wrap:wrap}
+    .content{padding:16px}
+    .two-col,.three-col{grid-template-columns:1fr}
+    .checks{grid-template-columns:1fr}
+    table{font-size:12px}th,td{padding:8px 8px}
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<div class="modal-bg" id="modal-bg">
+  <div class="modal">
+    <header><h3 id="modal-title">編集</h3><button class="icon-btn" onclick="closeModal()">✕</button></header>
+    <div class="body" id="modal-body"></div>
+    <footer>
+      <button class="btn ghost" onclick="closeModal()">キャンセル</button>
+      <button class="btn" id="modal-save">保存</button>
+    </footer>
+  </div>
+</div>
+
+<script>
+//==================================================================
+// API クライアント
+//==================================================================
+async function api(method, path, body){
+  const opt={method, headers:{}, credentials:'same-origin'};
+  if(body!==undefined){ opt.headers['Content-Type']='application/json'; opt.body=JSON.stringify(body); }
+  const res=await fetch(path, opt);
+  let data=null; try{ data=await res.json(); }catch(e){}
+  if(!res.ok){ const e=new Error((data&&data.error)||('エラー '+res.status)); e.status=res.status; throw e; }
+  return data;
+}
+
+//==================================================================
+// 共通フォーマッタ・定義
+//==================================================================
+const yen = n => '¥' + Math.round(n||0).toLocaleString('ja-JP');
+const pct = n => (n>=0?'+':'') + (n||0).toFixed(1) + '%';
+const todayISO = () => new Date().toISOString().slice(0,10);
+const months = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+const sum = (arr,f)=>(arr||[]).reduce((a,x)=>a+(f?f(x):x),0);
+function b(){ return 'id'+Math.random().toString(36).slice(2,9); }
+function addDays(n){ const d=new Date(); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
+function fmtDate(iso){ if(!iso) return '—'; const d=new Date(iso); return `${d.getMonth()+1}/${d.getDate()}`; }
+function daysTo(iso){ return Math.ceil((new Date(iso)-new Date(todayISO()))/86400000); }
+
+const PAGES = [
+  {id:'dashboard', icon:'📊', name:'ダッシュボード', title:'経営ダッシュボード', sub:'全社の経営状況をひと目で把握', sect:'分析'},
+  {id:'analysis', icon:'📈', name:'経営状況分析', title:'経営状況分析', sub:'指標・トレンド・健全性の診断', sect:'分析'},
+  {id:'breakeven', icon:'⚖️', name:'損益分岐分析', title:'損益分岐点分析', sub:'固定費・変動費から採算ラインを算出', sect:'分析'},
+  {id:'business', icon:'🏢', name:'事業管理', title:'事業管理', sub:'事業セグメント別の進捗と採算', sect:'事業・収益'},
+  {id:'sales', icon:'💹', name:'売上管理', title:'売上管理', sub:'月次・事業別の売上推移', sect:'事業・収益'},
+  {id:'finance', icon:'💰', name:'財務管理', title:'財務管理', sub:'損益計算書（PL）と資金状況', sect:'事業・収益'},
+  {id:'tasks', icon:'✅', name:'タスク管理', title:'タスク管理', sub:'全社のタスク進捗と期限管理', sect:'業務'},
+  {id:'contracts', icon:'📄', name:'契約管理', title:'契約管理', sub:'契約状況と更新期限のアラート', sect:'業務'},
+  {id:'people', icon:'👥', name:'人材管理', title:'人材状況', sub:'人員構成・人件費・評価', sect:'業務'},
+];
+const PAGE_WRITE={business:['businesses'],sales:['sales'],finance:['finance'],breakeven:['cost'],tasks:['tasks'],contracts:['contracts'],people:['people'],dashboard:[],analysis:[]};
+const PAGE_NAME=Object.fromEntries(PAGES.map(p=>[p.id,p.name]));
+
+//==================================================================
+// 状態
+//==================================================================
+let ME=null, STORE={}, REV=0, current=null, pollTimer=null;
+function canEdit(pageId){
+  if(!ME) return false;
+  if(ME.role==='admin') return true;
+  if(ME.role!=='editor') return false;
+  return (ME.pages||[]).includes(pageId) && (PAGE_WRITE[pageId]||[]).length>0;
+}
+function allowedPages(){ return ME.role==='admin'?PAGES.map(p=>p.id):(ME.pages||[]); }
+
+//==================================================================
+// 起動・認証フロー
+//==================================================================
+async function boot(){
+  try{ const r=await api('GET','/api/me'); ME=r.user; await afterLogin(); }
+  catch(e){ renderLogin(); }
+}
+async function afterLogin(){
+  await loadStore();
+  const pages=allowedPages();
+  current = pages.includes('dashboard')?'dashboard':(pages[0]|| (ME.role==='admin'?'users':null));
+  renderShell(); render();
+  startPolling();
+}
+async function loadStore(){ const r=await api('GET','/api/store'); STORE=r.store; REV=r.rev; }
+
+function renderLogin(msg){
+  stopPolling();
+  document.getElementById('root').innerHTML=`
+    <div class="login-wrap"><div class="login-card">
+      <div class="logo">経</div>
+      <h1>経営管理システム</h1><p>ログインしてください</p>
+      <div id="login-err" class="login-err" style="display:${msg?'block':'none'}">${msg||''}</div>
+      <div class="field"><label>ユーザーID</label><input id="li_user" autocomplete="username"></div>
+      <div class="field"><label>パスワード</label><input id="li_pw" type="password" autocomplete="current-password"></div>
+      <button class="btn block" id="li_btn">ログイン</button>
+    </div></div>`;
+  const submit=async()=>{
+    try{ const r=await api('POST','/api/login',{username:document.getElementById('li_user').value,password:document.getElementById('li_pw').value});
+      ME=r.user; await afterLogin();
+    }catch(e){ const el=document.getElementById('login-err'); el.style.display='block'; el.textContent=e.message; }
+  };
+  document.getElementById('li_btn').onclick=submit;
+  document.getElementById('li_pw').addEventListener('keydown',e=>{if(e.key==='Enter')submit();});
+  document.getElementById('li_user').focus();
+}
+async function logout(){ try{await api('POST','/api/logout');}catch(e){} ME=null; STORE={}; renderLogin(); }
+
+//==================================================================
+// アプリのシェル（サイドバー）
+//==================================================================
+function renderShell(){
+  const pages=allowedPages();
+  const sects={}; PAGES.forEach(p=>{ if(pages.includes(p.id)){ (sects[p.sect]=sects[p.sect]||[]).push(p); }});
+  let navHtml='';
+  Object.entries(sects).forEach(([s,ps])=>{
+    navHtml+=`<div class="sect">${s}</div>`;
+    ps.forEach(p=>navHtml+=`<button data-pg="${p.id}"><span class="ic">${p.icon}</span> ${p.name}</button>`);
+  });
+  if(ME.role==='admin'){
+    navHtml+=`<div class="sect">管理</div><button data-pg="users"><span class="ic">🔑</span> アカウント管理</button>`;
+  }
+  document.getElementById('root').innerHTML=`
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand"><div class="logo">経</div><div><h1>経営管理システム</h1><small>Management Suite</small></div></div>
+        <nav class="nav" id="nav">${navHtml}</nav>
+        <div class="userbox">
+          <div class="uname">${ME.display_name}</div>
+          <div class="urole">${roleLabel(ME.role)}</div>
+          <button class="btn ghost sm" style="width:100%;justify-content:center;margin-bottom:6px" onclick="changePassword()">🔒 パスワード変更</button>
+          <button class="btn ghost sm" style="width:100%;justify-content:center" onclick="logout()">↩ ログアウト</button>
+        </div>
+      </aside>
+      <main class="main">
+        <div class="topbar"><div><h2 id="page-title"></h2><div class="sub" id="page-sub"></div></div><div class="actions" id="page-actions"></div></div>
+        <div class="content" id="content"></div>
+      </main>
+    </div>`;
+  document.querySelectorAll('#nav button').forEach(btn=>btn.onclick=()=>go(btn.dataset.pg));
+}
+function roleLabel(r){ return r==='admin'?'管理者（全権限）':r==='editor'?'編集者':'閲覧者'; }
+function go(id){ current=id; markNav(); render(); window.scrollTo(0,0); }
+function markNav(){ document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('active', b.dataset.pg===current)); }
+function setHeader(title,sub,actions){
+  document.getElementById('page-title').textContent=title;
+  document.getElementById('page-sub').textContent=sub||'';
+  document.getElementById('page-actions').innerHTML=actions||'';
+}
+
+//==================================================================
+// リアルタイム反映（ポーリング）
+//==================================================================
+function startPolling(){
+  stopPolling();
+  pollTimer=setInterval(async()=>{
+    if(!ME) return;
+    if(document.getElementById('modal-bg').classList.contains('show')) return; // 編集中は更新しない
+    try{ const r=await api('GET','/api/rev');
+      if(r.rev!==REV){ await loadStore(); if(current!=='users') render(); }
+    }catch(e){ if(e.status===401){ ME=null; renderLogin('セッションが切れました。再度ログインしてください。'); } }
+  }, 4000);
+}
+function stopPolling(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
+
+//==================================================================
+// データ書き込み（API経由）
+//==================================================================
+async function persist(coll){
+  const r=await api('PUT','/api/store/'+coll,{value:STORE[coll]});
+  REV=r.rev;
+}
+
+//==================================================================
+// チャート
+//==================================================================
+function barChart(data, opts={}){
+  const max=Math.max(...data.map(d=>d.v),1); const cls=opts.green?'b b2':'b';
+  return `<div class="bars">${data.map(d=>`<div class="bar" title="${d.label}: ${opts.fmt?opts.fmt(d.v):d.v}"><div class="${cls}" style="height:${Math.max(d.v/max*100,1)}%"></div><small>${d.label}</small></div>`).join('')}</div>`;
+}
+function stackedSales(){
+  const s=STORE.sales||[]; const max=Math.max(...s.map(x=>x.total),1);
+  return `<div class="bars">${s.map((x,i)=>`<div class="bar" title="${months[i]} 計 ${yen(x.total)}">
+    <div style="width:70%;height:${x.total/max*100}%;display:flex;flex-direction:column;justify-content:flex-end;border-radius:6px 6px 0 0;overflow:hidden">
+      <div style="background:#a78bfa;height:${x.consul/x.total*100}%"></div>
+      <div style="background:#22c55e;height:${x.juchu/x.total*100}%"></div>
+      <div style="background:#4f8cff;height:${x.saas/x.total*100}%"></div></div>
+    <small>${i+1}月</small></div>`).join('')}</div>
+    <div class="legend"><span><i style="background:#4f8cff"></i>SaaS</span><span><i style="background:#22c55e"></i>受託</span><span><i style="background:#a78bfa"></i>コンサル</span></div>`;
+}
+function donut(segments, size=140){
+  const total=sum(segments,s=>s.value)||1; let acc=0; const r=size/2-12, c=size/2, circ=2*Math.PI*r;
+  const arcs=segments.map(s=>{const frac=s.value/total; const dash=frac*circ; const off=-acc*circ; acc+=frac;
+    return `<circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${s.color}" stroke-width="18" stroke-dasharray="${dash} ${circ-dash}" stroke-dashoffset="${off}" transform="rotate(-90 ${c} ${c})"/>`;}).join('');
+  return `<div class="donut"><svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${arcs}
+    <text x="${c}" y="${c-2}" text-anchor="middle" fill="#e7eaf0" font-size="13" font-weight="700">${total>=1e6?(total/1e6).toFixed(0)+'M':total}</text>
+    <text x="${c}" y="${c+16}" text-anchor="middle" fill="#9aa3b2" font-size="10">合計</text></svg></div>`;
+}
+function legendList(segments){
+  const total=sum(segments,s=>s.value)||1;
+  return `<div style="margin-top:8px">${segments.map(s=>`<div class="stat-line"><span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${s.color};margin-right:8px"></i>${s.label}</span><b>${yen(s.value)} <span class="muted" style="font-weight:400">(${(s.value/total*100).toFixed(0)}%)</span></b></div>`).join('')}</div>`;
+}
+function kpi(label,icon,val,delta){ return `<div class="card kpi"><div class="label">${icon} ${label}</div><div class="val">${val}</div><div class="delta">${delta||''}</div></div>`; }
+function prioDot(p){ const c=p==='高'?'#ef4444':p==='中'?'#f59e0b':'#22c55e'; return `<span style="color:${c}">●</span>`; }
+function legendStat(k,v){ return `<div class="stat-line"><span class="muted">${k}</span><b>${v}</b></div>`; }
+
+//==================================================================
+// 集計
+//==================================================================
+function ytd(){ const f=STORE.finance||[]; const rev=sum(f,x=>x.revenue),op=sum(f,x=>x.op),cogs=sum(f,x=>x.cogs),sga=sum(f,x=>x.sga);
+  return {rev,op,cogs,sga,opRate:rev?op/rev*100:0,gpRate:rev?(rev-cogs)/rev*100:0}; }
+function laborTotal(){ return sum(STORE.people,p=>p.cost)*12; }
+function breakeven(){ const {fixedMonthly,variableRate}=STORE.cost||{fixedMonthly:0,variableRate:0}; const cmRate=1-variableRate;
+  const beRevenue=cmRate>0?fixedMonthly/cmRate:0; return {fixedMonthly,variableRate,cmRate,beRevenue,beAnnual:beRevenue*12}; }
+
+//==================================================================
+// ルーター
+//==================================================================
+function render(){
+  markNav();
+  const c=document.getElementById('content');
+  const map={dashboard:renderDashboard,analysis:renderAnalysis,breakeven:renderBreakeven,business:renderBusiness,
+    sales:renderSales,finance:renderFinance,tasks:renderTasks,contracts:renderContracts,people:renderPeople,users:renderUsers};
+  const p=PAGES.find(x=>x.id===current);
+  (map[current]||(()=>{c.innerHTML='<div class="empty">ページがありません</div>'}))(c,p);
+}
+
+// ---- ダッシュボード ----
+function renderDashboard(c,p){
+  setHeader(p.title,p.sub,'');
+  const y=ytd(); const be=breakeven(); const f=STORE.finance||[];
+  const prevRev=f.slice(0,6).reduce((a,x)=>a+x.revenue,0), curRev=f.slice(6).reduce((a,x)=>a+x.revenue,0);
+  const growth=prevRev?(curRev-prevRev)/prevRev*100:0;
+  const overdue=(STORE.tasks||[]).filter(t=>t.status!=='完了'&&t.due<todayISO()).length;
+  const expiring=(STORE.contracts||[]).filter(ct=>daysTo(ct.end)<=30&&daysTo(ct.end)>=0).length;
+  const labor=laborTotal();
+  c.innerHTML=`
+    <div class="grid kpis">
+      ${kpi('年初来売上','💹',yen(y.rev),`<span class="${growth>=0?'up':'down'}">${pct(growth)} 半期比</span>`)}
+      ${kpi('営業利益','💰',yen(y.op),`<span class="${y.opRate>=0?'up':'down'}">営業利益率 ${y.opRate.toFixed(1)}%</span>`)}
+      ${kpi('粗利率','📊',y.gpRate.toFixed(1)+'%',`<span class="muted">原価率 ${(100-y.gpRate).toFixed(1)}%</span>`)}
+      ${kpi('年間人件費','👥',yen(labor),`<span class="muted">${(STORE.people||[]).length}名 / 売上比 ${y.rev?(labor/y.rev*100).toFixed(0):0}%</span>`)}
+    </div><div style="height:16px"></div>
+    ${overdue?`<div class="alert warn">⚠️ 期限超過のタスクが <b>${overdue}件</b> あります。</div>`:''}
+    ${expiring?`<div class="alert warn">📄 30日以内に更新期限を迎える契約が <b>${expiring}件</b> あります。</div>`:''}
+    <div class="two-col">
+      <div class="card"><h3>月次売上推移（事業別）<span class="pill info">FY${(STORE.company||{}).fy||''}</span></h3>${stackedSales()}</div>
+      <div class="card"><h3>事業別売上構成</h3>
+        ${donut([{label:'SaaS事業',value:sum(STORE.sales,x=>x.saas),color:'#4f8cff'},{label:'受託開発事業',value:sum(STORE.sales,x=>x.juchu),color:'#22c55e'},{label:'コンサル事業',value:sum(STORE.sales,x=>x.consul),color:'#a78bfa'}])}
+        ${legendList([{label:'SaaS事業',value:sum(STORE.sales,x=>x.saas),color:'#4f8cff'},{label:'受託開発事業',value:sum(STORE.sales,x=>x.juchu),color:'#22c55e'},{label:'コンサル事業',value:sum(STORE.sales,x=>x.consul),color:'#a78bfa'}])}
+      </div></div>
+    <div style="height:16px"></div>
+    <div class="three-col">
+      <div class="card"><h3>損益分岐点</h3>
+        <div class="stat-line"><span>月次固定費</span><b>${yen(be.fixedMonthly)}</b></div>
+        <div class="stat-line"><span>限界利益率</span><b>${(be.cmRate*100).toFixed(0)}%</b></div>
+        <div class="stat-line"><span>損益分岐売上(月)</span><b>${yen(be.beRevenue)}</b></div>
+        <div class="stat-line"><span>当月売上</span><b>${yen((f[f.length-1]||{}).revenue||0)}</b></div>
+        ${(()=>{const m=(f[f.length-1]||{}).revenue||0;const ok=m>=be.beRevenue;return `<div class="alert ${ok?'ok':'bad'}" style="margin-top:12px">${ok?'✅ 損益分岐点を上回っています':'⚠️ 損益分岐点を下回っています'}（達成率 ${be.beRevenue?(m/be.beRevenue*100).toFixed(0):0}%）</div>`;})()}
+      </div>
+      <div class="card"><h3>事業セグメント</h3>
+        ${(STORE.businesses||[]).map(bz=>{const a=bz.target?bz.actual/bz.target*100:0;return `<div style="margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:5px"><span>${bz.name} <span class="pill ${bz.status==='成長'?'ok':bz.status==='新規'?'info':'muted'}" style="margin-left:4px">${bz.status}</span></span><b>${a.toFixed(0)}%</b></div>
+          <div class="progress"><i style="width:${Math.min(a,100)}%;background:${a>=100?'#22c55e':a>=70?'#4f8cff':'#f59e0b'}"></i></div></div>`;}).join('')}
+      </div>
+      <div class="card"><h3>直近のタスク</h3>
+        ${(STORE.tasks||[]).filter(t=>t.status!=='完了').sort((a,b)=>a.due.localeCompare(b.due)).slice(0,5).map(t=>`<div class="stat-line"><span>${prioDot(t.priority)} ${t.title}</span><span class="${t.due<todayISO()?'down':'muted'}" style="font-size:12px">${fmtDate(t.due)}</span></div>`).join('')||'<div class="empty">タスクなし</div>'}
+      </div></div>`;
+}
+
+// ---- 経営状況分析 ----
+function renderAnalysis(c,p){
+  setHeader(p.title,p.sub,'');
+  const y=ytd(); const f=STORE.finance||[]; const be=breakeven(); const labor=laborTotal();
+  const opSeries=f.map((x,i)=>({label:(i+1)+'月',v:Math.max(x.op,0)}));
+  const gp=y.rev-y.cogs;
+  const checks=[
+    {k:'営業利益率',good:y.opRate>=10,target:'10%以上',cur:y.opRate.toFixed(1)+'%'},
+    {k:'粗利率',good:y.gpRate>=50,target:'50%以上',cur:y.gpRate.toFixed(1)+'%'},
+    {k:'労働分配率',good:gp?(labor/gp*100)<=60:false,target:'60%以下',cur:gp?(labor/gp*100).toFixed(0)+'%':'—'},
+    {k:'損益分岐比率',good:y.rev?(be.beAnnual/y.rev*100)<=85:false,target:'85%以下',cur:y.rev?(be.beAnnual/y.rev*100).toFixed(0)+'%':'—'},
+  ];
+  const score=Math.round(checks.filter(x=>x.good).length/checks.length*100);
+  const nPeople=(STORE.people||[]).length||1;
+  c.innerHTML=`
+    <div class="grid kpis">
+      ${kpi('経営健全性スコア','🩺',score+' / 100',`<span class="${score>=75?'up':score>=50?'':'down'}">${score>=75?'良好':score>=50?'要注意':'危険'}</span>`)}
+      ${kpi('営業利益率','📊',y.opRate.toFixed(1)+'%',`<span class="muted">業界目安 10%</span>`)}
+      ${kpi('労働分配率','👥',gp?(labor/gp*100).toFixed(0)+'%':'—',`<span class="muted">粗利に占める人件費</span>`)}
+      ${kpi('損益分岐比率','⚖️',y.rev?(be.beAnnual/y.rev*100).toFixed(0)+'%':'—',`<span class="muted">低いほど安全</span>`)}
+    </div><div style="height:16px"></div>
+    <div class="two-col">
+      <div class="card"><h3>営業利益の推移</h3>${barChart(opSeries,{green:true,fmt:yen})}</div>
+      <div class="card"><h3>健全性チェック</h3>
+        ${checks.map(ch=>`<div class="stat-line"><span>${ch.good?'✅':'⚠️'} ${ch.k} <span class="muted" style="font-size:11px">(目標 ${ch.target})</span></span><b class="${ch.good?'up':'down'}">${ch.cur}</b></div>`).join('')}
+        <div class="alert ${score>=75?'ok':score>=50?'warn':'bad'}" style="margin-top:14px">${score>=75?'全体として健全な経営状態です。利益率の維持に注力しましょう。':score>=50?'いくつかの指標で改善余地があります。コスト構造を見直しましょう。':'複数の指標が警戒水準です。固定費削減と粗利改善が急務です。'}</div>
+      </div></div>
+    <div style="height:16px"></div>
+    <div class="card"><h3>主要財務指標（年初来）</h3><div class="three-col">
+      <div>${legendStat('売上高',yen(y.rev))}${legendStat('売上原価',yen(y.cogs))}${legendStat('売上総利益',yen(gp))}</div>
+      <div>${legendStat('販管費',yen(y.sga))}${legendStat('営業利益',yen(y.op))}${legendStat('営業利益率',y.opRate.toFixed(1)+'%')}</div>
+      <div>${legendStat('年間人件費',yen(labor))}${legendStat('1人当たり売上',yen(y.rev/nPeople))}${legendStat('1人当たり利益',yen(y.op/nPeople))}</div>
+    </div></div>`;
+}
+
+// ---- 損益分岐 ----
+function renderBreakeven(c,p){
+  const editable=canEdit('breakeven');
+  setHeader(p.title,p.sub, editable?`<button class="btn ghost" onclick="editCost()">⚙ 前提条件を編集</button>`:'');
+  const be=breakeven(); const f=STORE.finance||[]; const curRev=(f[f.length-1]||{}).revenue||0;
+  const rows=[]; for(let m=0.6;m<=1.601;m+=0.2){ const rev=be.beRevenue*m; const vc=rev*be.variableRate; rows.push({rev,vc,fc:be.fixedMonthly,profit:rev-vc-be.fixedMonthly}); }
+  c.innerHTML=`
+    <div class="grid kpis">
+      ${kpi('損益分岐売上(月次)','⚖️',yen(be.beRevenue),`<span class="muted">これを超えれば黒字</span>`)}
+      ${kpi('損益分岐売上(年間)','📅',yen(be.beAnnual),'')}
+      ${kpi('限界利益率','📈',(be.cmRate*100).toFixed(0)+'%',`<span class="muted">変動費率 ${(be.variableRate*100).toFixed(0)}%</span>`)}
+      ${kpi('安全余裕率','🛡️',curRev?((curRev-be.beRevenue)/curRev*100).toFixed(0)+'%':'—',`<span class="${curRev>=be.beRevenue?'up':'down'}">当月売上ベース</span>`)}
+    </div><div style="height:16px"></div>
+    <div class="two-col">
+      <div class="card"><h3>前提条件</h3>
+        <div class="stat-line"><span>月次固定費（人件費・家賃等）</span><b>${yen(be.fixedMonthly)}</b></div>
+        <div class="stat-line"><span>変動費率（売上に対する原価）</span><b>${(be.variableRate*100).toFixed(0)}%</b></div>
+        <div class="stat-line"><span>限界利益率</span><b>${(be.cmRate*100).toFixed(0)}%</b></div>
+        <div class="stat-line"><span>当月売上</span><b>${yen(curRev)}</b></div>
+        <div class="stat-line"><span>当月の損益</span><b class="${curRev>=be.beRevenue?'up':'down'}">${yen(curRev-curRev*be.variableRate-be.fixedMonthly)}</b></div>
+        <div class="alert ${curRev>=be.beRevenue?'ok':'bad'}" style="margin-top:12px">${curRev>=be.beRevenue?`✅ 損益分岐点を ${yen(curRev-be.beRevenue)} 上回っています`:`⚠️ 黒字化まであと ${yen(be.beRevenue-curRev)} の売上が必要です`}</div>
+      </div>
+      <div class="card"><h3>売上シミュレーション</h3>
+        <table><thead><tr><th class="num">月次売上</th><th class="num">変動費</th><th class="num">固定費</th><th class="num">損益</th></tr></thead>
+        <tbody>${rows.map(r=>`<tr><td class="num">${yen(r.rev)}</td><td class="num">${yen(r.vc)}</td><td class="num">${yen(r.fc)}</td><td class="num ${r.profit>=0?'up':'down'}"><b>${yen(r.profit)}</b></td></tr>`).join('')}</tbody></table>
+        <p class="muted" style="font-size:12px;margin:12px 0 0">※ 損益分岐点 = 固定費 ÷ 限界利益率</p>
+      </div></div>`;
+}
+
+// ---- 事業管理 ----
+function renderBusiness(c,p){
+  const ed=canEdit('business');
+  setHeader(p.title,p.sub, ed?`<button class="btn" onclick="editBusiness()">＋ 事業を追加</button>`:roBadge());
+  c.innerHTML=`<div class="card"><table>
+    <thead><tr><th>事業名</th><th>責任者</th><th>ステータス</th><th class="num">目標</th><th class="num">実績</th><th class="num">達成率</th><th class="num">粗利率</th><th class="num">人員</th>${ed?'<th></th>':''}</tr></thead>
+    <tbody>${(STORE.businesses||[]).map(bz=>{const a=bz.target?bz.actual/bz.target*100:0;return `<tr>
+      <td><b>${bz.name}</b></td><td>${bz.lead}</td><td><span class="pill ${bz.status==='成長'?'ok':bz.status==='新規'?'info':'muted'}">${bz.status}</span></td>
+      <td class="num">${yen(bz.target)}</td><td class="num">${yen(bz.actual)}</td><td class="num"><b class="${a>=100?'up':a<70?'down':''}">${a.toFixed(0)}%</b></td>
+      <td class="num">${bz.gmRate}%</td><td class="num">${bz.members}名</td>
+      ${ed?`<td class="row-actions"><button class="icon-btn" onclick="editBusiness('${bz.id}')">✏️</button><button class="icon-btn" onclick="del('businesses','${bz.id}')">🗑</button></td>`:''}
+    </tr>`;}).join('')}</tbody></table></div>`;
+}
+
+// ---- 売上管理 ----
+function renderSales(c,p){
+  const ed=canEdit('sales');
+  setHeader(p.title,p.sub, ed?`<button class="btn ghost" onclick="editSales()">✏ 月次データを編集</button>`:roBadge());
+  const s=STORE.sales||[]; const total=sum(s,x=>x.total);
+  const maxMonth=s.length?months[s.indexOf(s.reduce((a,bb)=>bb.total>a.total?bb:a))]:'—';
+  c.innerHTML=`
+    <div class="grid kpis">
+      ${kpi('年間売上合計','💹',yen(total),'')}${kpi('月平均','📅',yen(total/12),'')}
+      ${kpi('最高月','⬆️',yen(Math.max(...s.map(x=>x.total),0)),`<span class="muted">${maxMonth}</span>`)}
+      ${kpi('SaaS比率','📊',total?(sum(s,x=>x.saas)/total*100).toFixed(0)+'%':'0%',`<span class="muted">主力事業</span>`)}
+    </div><div style="height:16px"></div>
+    <div class="card"><h3>月次売上推移（事業別）</h3>${stackedSales()}</div><div style="height:16px"></div>
+    <div class="card"><h3>月次明細</h3><table>
+    <thead><tr><th>月</th><th class="num">SaaS事業</th><th class="num">受託開発</th><th class="num">コンサル</th><th class="num">合計</th></tr></thead>
+    <tbody>${s.map((x,i)=>`<tr><td>${months[i]}</td><td class="num">${yen(x.saas)}</td><td class="num">${yen(x.juchu)}</td><td class="num">${yen(x.consul)}</td><td class="num"><b>${yen(x.total)}</b></td></tr>`).join('')}
+    <tr style="border-top:2px solid var(--line)"><td><b>合計</b></td><td class="num"><b>${yen(sum(s,x=>x.saas))}</b></td><td class="num"><b>${yen(sum(s,x=>x.juchu))}</b></td><td class="num"><b>${yen(sum(s,x=>x.consul))}</b></td><td class="num"><b>${yen(total)}</b></td></tr>
+    </tbody></table></div>`;
+}
+
+// ---- 財務管理 ----
+function renderFinance(c,p){
+  const ed=canEdit('finance');
+  setHeader(p.title,p.sub, ed?`<button class="btn ghost" onclick="editFinance()">✏ PL データを編集</button>`:roBadge());
+  const f=STORE.finance||[]; const y=ytd(); const opSeries=f.map((x,i)=>({label:(i+1)+'月',v:Math.max(x.op,0)}));
+  c.innerHTML=`
+    <div class="grid kpis">
+      ${kpi('売上高(年初来)','💹',yen(y.rev),'')}${kpi('売上総利益','📊',yen(y.rev-y.cogs),`<span class="muted">粗利率 ${y.gpRate.toFixed(1)}%</span>`)}
+      ${kpi('営業利益','💰',yen(y.op),`<span class="${y.opRate>=0?'up':'down'}">利益率 ${y.opRate.toFixed(1)}%</span>`)}
+      ${kpi('販管費','🧾',yen(y.sga),`<span class="muted">売上比 ${y.rev?(y.sga/y.rev*100).toFixed(0):0}%</span>`)}
+    </div><div style="height:16px"></div>
+    <div class="two-col">
+      <div class="card"><h3>営業利益の推移</h3>${barChart(opSeries,{green:true,fmt:yen})}</div>
+      <div class="card"><h3>コスト構成（年初来）</h3>
+        ${donut([{label:'売上原価',value:y.cogs,color:'#ef4444'},{label:'販管費',value:y.sga,color:'#f59e0b'},{label:'営業利益',value:Math.max(y.op,0),color:'#22c55e'}])}
+        ${legendList([{label:'売上原価',value:y.cogs,color:'#ef4444'},{label:'販管費',value:y.sga,color:'#f59e0b'},{label:'営業利益',value:Math.max(y.op,0),color:'#22c55e'}])}
+      </div></div><div style="height:16px"></div>
+    <div class="card"><h3>損益計算書（月次）</h3><table>
+    <thead><tr><th>月</th><th class="num">売上高</th><th class="num">売上原価</th><th class="num">売上総利益</th><th class="num">販管費</th><th class="num">営業利益</th></tr></thead>
+    <tbody>${f.map((x,i)=>`<tr><td>${months[i]}</td><td class="num">${yen(x.revenue)}</td><td class="num">${yen(x.cogs)}</td><td class="num">${yen(x.revenue-x.cogs)}</td><td class="num">${yen(x.sga)}</td><td class="num ${x.op>=0?'up':'down'}"><b>${yen(x.op)}</b></td></tr>`).join('')}
+    <tr style="border-top:2px solid var(--line)"><td><b>合計</b></td><td class="num"><b>${yen(y.rev)}</b></td><td class="num"><b>${yen(y.cogs)}</b></td><td class="num"><b>${yen(y.rev-y.cogs)}</b></td><td class="num"><b>${yen(y.sga)}</b></td><td class="num"><b>${yen(y.op)}</b></td></tr>
+    </tbody></table></div>`;
+}
+
+// ---- タスク管理 ----
+let taskFilter='all';
+function renderTasks(c,p){
+  const ed=canEdit('tasks');
+  setHeader(p.title,p.sub, ed?`<button class="btn" onclick="editTask()">＋ タスクを追加</button>`:roBadge());
+  const tasks=STORE.tasks||[]; const counts={未着手:0,進行中:0,完了:0}; tasks.forEach(t=>counts[t.status]=(counts[t.status]||0)+1);
+  let list=tasks.slice(); if(taskFilter!=='all') list=list.filter(t=>t.status===taskFilter); list.sort((a,b)=>a.due.localeCompare(b.due));
+  c.innerHTML=`
+    <div class="grid kpis">
+      ${kpi('全タスク','✅',tasks.length,'')}${kpi('進行中','🔄',counts.進行中||0,'')}${kpi('未着手','📋',counts.未着手||0,'')}
+      ${kpi('期限超過','⏰',tasks.filter(t=>t.status!=='完了'&&t.due<todayISO()).length,'')}
+    </div><div style="height:16px"></div>
+    <div class="toolbar"><select onchange="taskFilter=this.value;render()">
+      <option value="all"${taskFilter==='all'?' selected':''}>すべて</option>
+      <option value="未着手"${taskFilter==='未着手'?' selected':''}>未着手</option>
+      <option value="進行中"${taskFilter==='進行中'?' selected':''}>進行中</option>
+      <option value="完了"${taskFilter==='完了'?' selected':''}>完了</option></select></div>
+    <div class="card"><table>
+    <thead><tr><th>優先</th><th>タスク</th><th>担当</th><th>事業</th><th>期限</th><th>状態</th>${ed?'<th></th>':''}</tr></thead>
+    <tbody>${list.map(t=>{const od=t.status!=='完了'&&t.due<todayISO();return `<tr>
+      <td>${prioDot(t.priority)} ${t.priority}</td><td><b>${t.title}</b></td><td>${t.assignee}</td><td><span class="muted">${t.biz}</span></td>
+      <td class="${od?'down':''}">${fmtDate(t.due)}${od?' ⚠️':''}</td><td><span class="pill ${t.status==='完了'?'ok':t.status==='進行中'?'info':'muted'}">${t.status}</span></td>
+      ${ed?`<td class="row-actions"><button class="icon-btn" onclick="editTask('${t.id}')">✏️</button><button class="icon-btn" onclick="del('tasks','${t.id}')">🗑</button></td>`:''}
+    </tr>`;}).join('')||`<tr><td colspan="${ed?7:6}"><div class="empty">該当するタスクがありません</div></td></tr>`}</tbody></table></div>`;
+}
+
+// ---- 契約管理 ----
+function renderContracts(c,p){
+  const ed=canEdit('contracts');
+  setHeader(p.title,p.sub, ed?`<button class="btn" onclick="editContract()">＋ 契約を追加</button>`:roBadge());
+  const cs=(STORE.contracts||[]).slice().sort((a,b)=>a.end.localeCompare(b.end));
+  const annualValue=sum(cs,x=>x.amount); const expiring=cs.filter(x=>daysTo(x.end)<=30);
+  c.innerHTML=`
+    <div class="grid kpis">
+      ${kpi('契約件数','📄',cs.length,'')}${kpi('契約金額合計','💰',yen(annualValue),`<span class="muted">年間ベース</span>`)}
+      ${kpi('30日以内更新','⏰',expiring.length,expiring.length?`<span class="down">要対応</span>`:'<span class="up">なし</span>')}
+      ${kpi('自動更新','🔁',cs.filter(x=>x.auto).length+'件','')}
+    </div><div style="height:16px"></div>
+    ${expiring.length?`<div class="alert warn">⏰ まもなく更新期限を迎える契約: ${expiring.map(x=>x.client).join('、')}</div>`:''}
+    <div class="card"><table>
+    <thead><tr><th>取引先</th><th>種別</th><th class="num">金額</th><th>開始</th><th>終了</th><th>残日数</th><th>状態</th><th>自動更新</th>${ed?'<th></th>':''}</tr></thead>
+    <tbody>${cs.map(ct=>{const d=daysTo(ct.end);return `<tr>
+      <td><b>${ct.client}</b></td><td>${ct.type}</td><td class="num">${yen(ct.amount)}</td><td>${fmtDate(ct.start)}</td><td>${fmtDate(ct.end)}</td>
+      <td><span class="${d<0?'down':d<=30?'':'muted'}">${d<0?'期限切れ':d+'日'}</span></td><td><span class="pill ${ct.status==='有効'?'ok':'warn'}">${ct.status}</span></td><td>${ct.auto?'🔁 あり':'—'}</td>
+      ${ed?`<td class="row-actions"><button class="icon-btn" onclick="editContract('${ct.id}')">✏️</button><button class="icon-btn" onclick="del('contracts','${ct.id}')">🗑</button></td>`:''}
+    </tr>`;}).join('')}</tbody></table></div>`;
+}
+
+// ---- 人材管理 ----
+function renderPeople(c,p){
+  const ed=canEdit('people');
+  setHeader(p.title,p.sub, ed?`<button class="btn" onclick="editPerson()">＋ 人材を追加</button>`:roBadge());
+  const ppl=STORE.people||[]; const monthly=sum(ppl,x=>x.cost); const n=ppl.length||1;
+  const byBiz={}; ppl.forEach(x=>byBiz[x.biz]=(byBiz[x.biz]||0)+1);
+  const colors=['#4f8cff','#22c55e','#a78bfa','#f59e0b','#06b6d4'];
+  const seg=Object.entries(byBiz).map(([k,v],i)=>({label:k,value:v,color:colors[i%colors.length]}));
+  c.innerHTML=`
+    <div class="grid kpis">
+      ${kpi('在籍人数','👥',ppl.length+'名','')}${kpi('月間人件費','💰',yen(monthly),`<span class="muted">年間 ${yen(monthly*12)}</span>`)}
+      ${kpi('正社員','🧑‍💼',ppl.filter(x=>x.type==='正社員').length+'名','')}${kpi('業務委託等','📝',ppl.filter(x=>x.type!=='正社員').length+'名','')}
+    </div><div style="height:16px"></div>
+    <div class="two-col">
+      <div class="card"><h3>事業別の人員配置</h3>${donut(seg.map(s=>({...s})),140)}
+        <div style="margin-top:8px">${seg.map(s=>`<div class="stat-line"><span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${s.color};margin-right:8px"></i>${s.label}</span><b>${s.value}名</b></div>`).join('')}</div></div>
+      <div class="card"><h3>評価分布</h3>
+        ${['A','B','C'].map(r=>{const c2=ppl.filter(x=>x.rating===r).length;return `<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>評価 ${r}</span><b>${c2}名</b></div><div class="progress"><i style="width:${c2/n*100}%;background:${r==='A'?'#22c55e':r==='B'?'#4f8cff':'#f59e0b'}"></i></div></div>`;}).join('')}
+        <p class="muted" style="font-size:12px;margin-top:14px">1人当たり月間コスト: ${yen(monthly/n)}</p></div></div>
+    <div style="height:16px"></div>
+    <div class="card"><table>
+    <thead><tr><th>氏名</th><th>役職</th><th>所属事業</th><th>区分</th><th class="num">月間コスト</th><th>入社日</th><th>評価</th>${ed?'<th></th>':''}</tr></thead>
+    <tbody>${ppl.map(x=>`<tr><td><b>${x.name}</b></td><td>${x.role}</td><td><span class="muted">${x.biz}</span></td>
+      <td><span class="pill ${x.type==='正社員'?'info':'muted'}">${x.type}</span></td><td class="num">${yen(x.cost)}</td><td>${fmtDate(x.joined)}</td>
+      <td><span class="pill ${x.rating==='A'?'ok':x.rating==='B'?'info':'warn'}">${x.rating}</span></td>
+      ${ed?`<td class="row-actions"><button class="icon-btn" onclick="editPerson('${x.id}')">✏️</button><button class="icon-btn" onclick="del('people','${x.id}')">🗑</button></td>`:''}
+    </tr>`).join('')}</tbody></table></div>`;
+}
+function roBadge(){ return `<span class="pill muted">閲覧のみ</span>`; }
+
+// ---- アカウント管理（管理者専用） ----
+async function renderUsers(c){
+  setHeader('アカウント管理','メンバーの追加・権限（表示できるページ）の設定',`<button class="btn" onclick="editUser()">＋ メンバーを追加</button>`);
+  c.innerHTML=`<div class="card"><div class="empty">読み込み中...</div></div>`;
+  let users=[];
+  try{ const r=await api('GET','/api/users'); users=r.users; }catch(e){ c.innerHTML=`<div class="alert bad">${e.message}</div>`; return; }
+  c.innerHTML=`
+    <div class="alert info">「権限」は閲覧者/編集者/管理者の3種類。「表示できるページ」で各メンバーに見せる画面を選びます。管理者は全ページ＋このアカウント管理が使えます。</div>
+    <div class="card"><table>
+    <thead><tr><th>ユーザーID</th><th>表示名</th><th>権限</th><th>表示できるページ</th><th></th></tr></thead>
+    <tbody>${users.map(u=>`<tr>
+      <td><b>${u.username}</b></td><td>${u.display_name}</td>
+      <td><span class="pill ${u.role==='admin'?'bad':u.role==='editor'?'info':'muted'}">${roleLabel(u.role)}</span></td>
+      <td>${u.role==='admin'?'<span class="muted">全ページ</span>':(u.pages.length?u.pages.map(p=>`<span class="pill muted" style="margin:1px">${PAGE_NAME[p]||p}</span>`).join(' '):'<span class="muted">なし</span>')}</td>
+      <td class="row-actions"><button class="icon-btn" onclick='editUser(${JSON.stringify(u)})'>✏️</button>${u.id===ME.id?'':`<button class="icon-btn" onclick="delUser('${u.id}','${u.username}')">🗑</button>`}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
+//==================================================================
+// モーダル
+//==================================================================
+let modalSave=null;
+function openModal(title, html, onSave){
+  document.getElementById('modal-title').textContent=title;
+  document.getElementById('modal-body').innerHTML=html;
+  modalSave=onSave;
+  document.getElementById('modal-bg').classList.add('show');
+}
+function closeModal(){ document.getElementById('modal-bg').classList.remove('show'); modalSave=null; }
+document.getElementById('modal-save').onclick=async()=>{ if(modalSave){ try{ await modalSave(); }catch(e){ alert(e.message); } } };
+document.getElementById('modal-bg').onclick=e=>{ if(e.target.id==='modal-bg') closeModal(); };
+function fv(id){ return document.getElementById(id).value; }
+function fnum(id){ return Number(document.getElementById(id).value)||0; }
+function field(label,id,val,type='text'){ return `<div class="field"><label>${label}</label><input id="${id}" type="${type}" value="${val??''}"></div>`; }
+function selField(label,id,val,opts){ return `<div class="field"><label>${label}</label><select id="${id}">${opts.map(o=>`<option${o===val?' selected':''}>${o}</option>`).join('')}</select></div>`; }
+
+async function upsert(coll,obj,id){
+  if(id){ const i=STORE[coll].findIndex(x=>x.id===id); STORE[coll][i]=obj; }
+  else { STORE[coll]=STORE[coll]||[]; STORE[coll].push(obj); }
+  await persist(coll); closeModal(); render();
+}
+async function del(coll,id){
+  if(!confirm('削除しますか?')) return;
+  const backup=STORE[coll]; STORE[coll]=STORE[coll].filter(x=>x.id!==id);
+  try{ await persist(coll); render(); }catch(e){ STORE[coll]=backup; alert(e.message); }
+}
+
+function editBusiness(id){
+  const x=(STORE.businesses||[]).find(z=>z.id===id)||{name:'',lead:'',status:'新規',target:0,actual:0,members:0,gmRate:0};
+  openModal(id?'事業を編集':'事業を追加',`${field('事業名','f_name',x.name)}${field('責任者','f_lead',x.lead)}${selField('ステータス','f_status',x.status,['成長','安定','新規','縮小'])}
+    <div class="field two"><label>目標 / 実績 売上(円)</label><input id="f_target" type="number" value="${x.target}"><input id="f_actual" type="number" value="${x.actual}"></div>
+    <div class="field two"><label>人員(名) / 粗利率(%)</label><input id="f_members" type="number" value="${x.members}"><input id="f_gm" type="number" value="${x.gmRate}"></div>`,
+    ()=>upsert('businesses',{id:id||b(),name:fv('f_name'),lead:fv('f_lead'),status:fv('f_status'),target:fnum('f_target'),actual:fnum('f_actual'),members:fnum('f_members'),gmRate:fnum('f_gm')},id));
+}
+function editTask(id){
+  const x=(STORE.tasks||[]).find(t=>t.id===id)||{title:'',assignee:'',due:todayISO(),priority:'中',status:'未着手',biz:'全社'};
+  const bizOpts=['全社',...(STORE.businesses||[]).map(z=>z.name)];
+  openModal(id?'タスクを編集':'タスクを追加',`${field('タスク名','f_title',x.title)}${field('担当者','f_as',x.assignee)}${selField('事業','f_biz',x.biz,bizOpts)}${field('期限','f_due',x.due,'date')}
+    <div class="field two"><label>優先度 / 状態</label><select id="f_prio">${['高','中','低'].map(o=>`<option${o===x.priority?' selected':''}>${o}</option>`).join('')}</select><select id="f_status">${['未着手','進行中','完了'].map(o=>`<option${o===x.status?' selected':''}>${o}</option>`).join('')}</select></div>`,
+    ()=>upsert('tasks',{id:id||b(),title:fv('f_title'),assignee:fv('f_as'),biz:fv('f_biz'),due:fv('f_due'),priority:fv('f_prio'),status:fv('f_status')},id));
+}
+function editContract(id){
+  const x=(STORE.contracts||[]).find(z=>z.id===id)||{client:'',type:'保守契約',amount:0,start:todayISO(),end:addDays(365),status:'有効',auto:true};
+  openModal(id?'契約を編集':'契約を追加',`${field('取引先','f_client',x.client)}${selField('種別','f_type',x.type,['保守契約','SaaS年間','受託開発','コンサル','その他'])}${field('契約金額(円)','f_amount',x.amount,'number')}
+    <div class="field two"><label>開始日 / 終了日</label><input id="f_start" type="date" value="${x.start}"><input id="f_end" type="date" value="${x.end}"></div>
+    <div class="field two"><label>状態 / 自動更新</label><select id="f_status">${['有効','更新待ち','終了'].map(o=>`<option${o===x.status?' selected':''}>${o}</option>`).join('')}</select><select id="f_auto"><option value="true"${x.auto?' selected':''}>あり</option><option value="false"${!x.auto?' selected':''}>なし</option></select></div>`,
+    ()=>upsert('contracts',{id:id||b(),client:fv('f_client'),type:fv('f_type'),amount:fnum('f_amount'),start:fv('f_start'),end:fv('f_end'),status:fv('f_status'),auto:fv('f_auto')==='true'},id));
+}
+function editPerson(id){
+  const x=(STORE.people||[]).find(z=>z.id===id)||{name:'',role:'',biz:((STORE.businesses||[])[0]||{}).name||'',type:'正社員',cost:0,joined:todayISO(),rating:'B'};
+  const bizOpts=(STORE.businesses||[]).map(z=>z.name);
+  openModal(id?'人材を編集':'人材を追加',`${field('氏名','f_name',x.name)}${field('役職','f_role',x.role)}${selField('所属事業','f_biz',x.biz,bizOpts.length?bizOpts:['—'])}${selField('区分','f_type',x.type,['正社員','契約社員','業務委託','パート'])}${field('月間コスト(円)','f_cost',x.cost,'number')}
+    <div class="field two"><label>入社日 / 評価</label><input id="f_joined" type="date" value="${x.joined}"><select id="f_rating">${['A','B','C'].map(o=>`<option${o===x.rating?' selected':''}>${o}</option>`).join('')}</select></div>`,
+    ()=>upsert('people',{id:id||b(),name:fv('f_name'),role:fv('f_role'),biz:fv('f_biz'),type:fv('f_type'),cost:fnum('f_cost'),joined:fv('f_joined'),rating:fv('f_rating')},id));
+}
+function editCost(){
+  const x=STORE.cost||{fixedMonthly:0,variableRate:0};
+  openModal('損益分岐の前提条件',`${field('月次固定費(円)','f_fixed',x.fixedMonthly,'number')}${field('変動費率(0〜1, 例:0.42)','f_var',x.variableRate,'number')}`,
+    async()=>{ STORE.cost={...x,fixedMonthly:fnum('f_fixed'),variableRate:Math.min(Math.max(fnum('f_var'),0),0.99)}; await persist('cost'); closeModal(); render(); });
+}
+function editSales(){
+  const s=STORE.sales||[];
+  openModal('月次売上の編集（事業別・円）',`<p class="muted" style="font-size:12px;margin-top:0">SaaS / 受託 / コンサルを入力。合計は自動計算。</p>`+
+    s.map((x,i)=>`<div class="field"><label>${months[i]}（SaaS / 受託 / コンサル）</label><div style="display:flex;gap:8px"><input id="s_${i}_a" type="number" value="${x.saas}"><input id="s_${i}_b" type="number" value="${x.juchu}"><input id="s_${i}_c" type="number" value="${x.consul}"></div></div>`).join(''),
+    async()=>{ STORE.sales=s.map((x,i)=>{const a=fnum('s_'+i+'_a'),bb=fnum('s_'+i+'_b'),cc=fnum('s_'+i+'_c');return {month:i,saas:a,juchu:bb,consul:cc,total:a+bb+cc};}); await persist('sales'); closeModal(); render(); });
+}
+function editFinance(){
+  const f=STORE.finance||[];
+  openModal('月次PLの編集（円）',`<p class="muted" style="font-size:12px;margin-top:0">売上 / 原価 / 販管費を入力。営業利益は自動計算。</p>`+
+    f.map((x,i)=>`<div class="field"><label>${months[i]}（売上 / 原価 / 販管費）</label><div style="display:flex;gap:8px"><input id="g_${i}_r" type="number" value="${x.revenue}"><input id="g_${i}_c" type="number" value="${x.cogs}"><input id="g_${i}_s" type="number" value="${x.sga}"></div></div>`).join(''),
+    async()=>{ STORE.finance=f.map((x,i)=>{const r=fnum('g_'+i+'_r'),co=fnum('g_'+i+'_c'),sg=fnum('g_'+i+'_s');return {month:i,revenue:r,cogs:co,sga:sg,op:r-co-sg};}); await persist('finance'); closeModal(); render(); });
+}
+
+// ---- パスワード変更（本人） ----
+function changePassword(){
+  openModal('パスワード変更',`${field('現在のパスワード','p_old','','password')}${field('新しいパスワード（6文字以上）','p_new','','password')}`,
+    async()=>{ await api('POST','/api/password',{old:fv('p_old'),new:fv('p_new')}); closeModal(); alert('パスワードを変更しました'); });
+}
+
+// ---- アカウントの追加・編集（管理者） ----
+function editUser(u){
+  const isNew=!u; u=u||{username:'',display_name:'',role:'viewer',pages:[]};
+  const pageChecks=PAGES.map(p=>`<label><input type="checkbox" class="u_page" value="${p.id}"${(u.pages||[]).includes(p.id)?' checked':''}> ${p.icon} ${p.name}</label>`).join('');
+  openModal(isNew?'メンバーを追加':'メンバーを編集',`
+    ${field('ユーザーID（ログインに使用）','u_user',u.username)}
+    ${isNew?'':'<p class="muted" style="font-size:11px;margin:-8px 0 12px">※ ユーザーIDは変更できません</p>'}
+    ${field('表示名','u_name',u.display_name)}
+    ${selField('権限','u_role',roleLabel(u.role),['閲覧者','編集者','管理者'])}
+    ${field(isNew?'初期パスワード（6文字以上）':'パスワード（変更する場合のみ入力）','u_pw','','password')}
+    <div class="field"><label>表示できるページ（権限が「管理者」の場合は全ページ）</label><div class="checks">${pageChecks}</div></div>`,
+    async()=>{
+      const roleMap={'閲覧者':'viewer','編集者':'editor','管理者':'admin'};
+      const role=roleMap[fv('u_role')];
+      const pages=[...document.querySelectorAll('.u_page:checked')].map(e=>e.value);
+      const pw=fv('u_pw');
+      if(isNew){
+        await api('POST','/api/users',{username:fv('u_user'),display_name:fv('u_name'),role,pages,password:pw});
+      }else{
+        const body={display_name:fv('u_name'),role,pages}; if(pw) body.password=pw;
+        const idEl=u.id; await api('PUT','/api/users/'+idEl,body);
+      }
+      closeModal(); render();
+    });
+  if(!isNew){ const inp=document.getElementById('u_user'); inp.disabled=true; inp.style.opacity=.6; }
+}
+async function delUser(id,name){
+  if(!confirm(`メンバー「${name}」を削除しますか?`)) return;
+  try{ await api('DELETE','/api/users/'+id); render(); }catch(e){ alert(e.message); }
+}
+
+//==================================================================
+boot();
+</script>
+</body>
+</html>

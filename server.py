@@ -35,11 +35,14 @@ PAGE_COLLECTIONS = {
     "tasks":     ["tasks", "businesses"],
     "contracts": ["contracts"],
     "people":    ["people", "businesses"],
+    "tools":     ["tools"],
+    "recruits":  ["recruits"],
 }
 # 各ページが編集できるデータ種別
 PAGE_WRITE = {
     "business": ["businesses"], "sales": ["sales"], "finance": ["finance"],
     "breakeven": ["cost"], "tasks": ["tasks"], "contracts": ["contracts"], "people": ["people"],
+    "tools": ["tools"], "recruits": ["recruits"],
     "dashboard": [], "analysis": [],
 }
 ALL_PAGES = list(PAGE_COLLECTIONS.keys())
@@ -77,9 +80,9 @@ def seed_store():
     return {
         "company": {"name": "株式会社サンプル", "fy": "2026", "cashTarget": 30000000},
         "businesses": [
-            {"id": gid("b"), "name": "SaaS事業", "lead": "山田 太郎", "status": "成長", "target": 120000000, "actual": 98000000, "members": 8, "gmRate": 72},
-            {"id": gid("b"), "name": "受託開発事業", "lead": "佐藤 花子", "status": "安定", "target": 80000000, "actual": 84000000, "members": 12, "gmRate": 38},
-            {"id": gid("b"), "name": "コンサル事業", "lead": "鈴木 一郎", "status": "新規", "target": 30000000, "actual": 18000000, "members": 4, "gmRate": 55},
+            {"id": gid("b"), "name": "SaaS事業", "lead": "山田 太郎", "status": "成長", "target": 120000000, "actual": 98000000, "members": 8, "gmRate": 72, "salesKey": "saas"},
+            {"id": gid("b"), "name": "受託開発事業", "lead": "佐藤 花子", "status": "安定", "target": 80000000, "actual": 84000000, "members": 12, "gmRate": 38, "salesKey": "juchu"},
+            {"id": gid("b"), "name": "コンサル事業", "lead": "鈴木 一郎", "status": "新規", "target": 30000000, "actual": 18000000, "members": 4, "gmRate": 55, "salesKey": "consul"},
         ],
         "sales": sales,
         "finance": finance,
@@ -107,6 +110,20 @@ def seed_store():
             {"id": gid("p"), "name": "高橋 健", "role": "エンジニア", "biz": "受託開発事業", "type": "業務委託", "cost": 700000, "joined": "2024-01-01", "rating": "B"},
             {"id": gid("p"), "name": "伊藤 葵", "role": "デザイナー", "biz": "SaaS事業", "type": "正社員", "cost": 520000, "joined": "2023-10-01", "rating": "B"},
         ],
+        "tools": [
+            {"id": gid("k"), "name": "Slack", "url": "https://slack.com", "category": "コミュニケーション", "icon": "💬"},
+            {"id": gid("k"), "name": "Gmail", "url": "https://mail.google.com", "category": "コミュニケーション", "icon": "✉️"},
+            {"id": gid("k"), "name": "freee 会計", "url": "https://secure.freee.co.jp", "category": "会計・経理", "icon": "💴"},
+            {"id": gid("k"), "name": "Google Drive", "url": "https://drive.google.com", "category": "ドキュメント", "icon": "📁"},
+            {"id": gid("k"), "name": "Notion", "url": "https://www.notion.so", "category": "ドキュメント", "icon": "📝"},
+            {"id": gid("k"), "name": "Google カレンダー", "url": "https://calendar.google.com", "category": "スケジュール", "icon": "📅"},
+        ],
+        "recruits": [
+            {"id": gid("r"), "name": "応募者A", "position": "バックエンドエンジニア", "stage": "面接", "source": "エージェント", "applied": days(-10), "note": ""},
+            {"id": gid("r"), "name": "応募者B", "position": "営業", "stage": "書類選考", "source": "求人媒体", "applied": days(-5), "note": ""},
+            {"id": gid("r"), "name": "応募者C", "position": "デザイナー", "stage": "内定", "source": "リファラル", "applied": days(-20), "note": ""},
+            {"id": gid("r"), "name": "応募者D", "position": "バックエンドエンジニア", "stage": "応募", "source": "直接応募", "applied": days(-2), "note": ""},
+        ],
     }
 
 def fresh_db():
@@ -115,7 +132,7 @@ def fresh_db():
         "rev": 1,
         "users": [{
             "id": "u" + secrets.token_hex(4), "username": "admin", "display_name": "管理者",
-            "role": "admin", "pages": ALL_PAGES, "salt": salt, "hash": h, "created_at": now(),
+            "role": "admin", "pages": ALL_PAGES, "biz": "全社", "salt": salt, "hash": h, "created_at": now(),
         }],
         "sessions": {},
         "store": seed_store(),
@@ -150,7 +167,24 @@ def init_db():
 # =====================================================================
 def user_public(u):
     return {"id": u["id"], "username": u["username"], "display_name": u["display_name"],
-            "role": u["role"], "pages": (ALL_PAGES if u["role"] == "admin" else u.get("pages", []))}
+            "role": u["role"], "biz": u.get("biz", "全社"),
+            "pages": (ALL_PAGES if u["role"] == "admin" else u.get("pages", []))}
+
+def scope_sales(u, sales):
+    """所属事業に紐付くメンバーには、その事業の売上のみ返す（管理者・全社は全件）"""
+    if u["role"] == "admin":
+        return sales
+    biz = u.get("biz", "全社")
+    if not biz or biz == "全社":
+        return sales
+    key = None
+    for b in DB["store"].get("businesses", []):
+        if b["name"] == biz:
+            key = b.get("salesKey")
+    if not key:
+        return sales
+    return [{"month": r.get("month"), "saas": 0, "juchu": 0, "consul": 0,
+             key: r.get(key, 0), "total": r.get(key, 0), "_scoped": biz} for r in sales]
 
 def readable_collections(u):
     if u["role"] == "admin":
@@ -337,6 +371,8 @@ class Handler(BaseHTTPRequestHandler):
         cols = readable_collections(u)
         with LOCK:
             data = {k: v for k, v in DB["store"].items() if k in cols}
+            if "sales" in data:
+                data["sales"] = scope_sales(u, data["sales"])
             rev = DB["rev"]
         self._json(200, {"store": data, "rev": rev})
 
@@ -387,7 +423,8 @@ class Handler(BaseHTTPRequestHandler):
             salt, h = hash_pw(password)
             u = {"id": "u" + secrets.token_hex(4), "username": username,
                  "display_name": (d.get("display_name") or username).strip(),
-                 "role": role, "pages": pages, "salt": salt, "hash": h, "created_at": now()}
+                 "role": role, "pages": pages, "biz": (d.get("biz") or "全社").strip(),
+                 "salt": salt, "hash": h, "created_at": now()}
             DB["users"].append(u)
             DB["rev"] += 1
             save_db(DB)
@@ -411,6 +448,8 @@ class Handler(BaseHTTPRequestHandler):
                 u["role"] = d["role"]
             if "pages" in d:
                 u["pages"] = [p for p in (d["pages"] or []) if p in ALL_PAGES]
+            if "biz" in d:
+                u["biz"] = (d["biz"] or "全社").strip()
             if d.get("password"):
                 if len(d["password"]) < 6:
                     return self._err(400, "パスワードは6文字以上にしてください")

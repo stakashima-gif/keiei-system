@@ -177,8 +177,10 @@ const PAGES = [
   {id:'tasks', icon:'✅', name:'タスク管理', title:'タスク管理', sub:'全社のタスク進捗と期限管理', sect:'業務'},
   {id:'contracts', icon:'📄', name:'契約管理', title:'契約管理', sub:'契約状況と更新期限のアラート', sect:'業務'},
   {id:'people', icon:'👥', name:'人材管理', title:'人材状況', sub:'人員構成・人件費・評価', sect:'業務'},
+  {id:'recruits', icon:'🧑‍💼', name:'採用管理', title:'採用管理', sub:'候補者・募集ポジション・選考状況の管理', sect:'業務'},
+  {id:'tools', icon:'🔗', name:'ツール', title:'ツール一元管理', sub:'よく使うツールへのリンク集', sect:'ツール'},
 ];
-const PAGE_WRITE={business:['businesses'],sales:['sales'],finance:['finance'],breakeven:['cost'],tasks:['tasks'],contracts:['contracts'],people:['people'],dashboard:[],analysis:[]};
+const PAGE_WRITE={business:['businesses'],sales:['sales'],finance:['finance'],breakeven:['cost'],tasks:['tasks'],contracts:['contracts'],people:['people'],tools:['tools'],recruits:['recruits'],dashboard:[],analysis:[]};
 const PAGE_NAME=Object.fromEntries(PAGES.map(p=>[p.id,p.name]));
 
 //==================================================================
@@ -344,7 +346,7 @@ function breakeven(){ const {fixedMonthly,variableRate}=STORE.cost||{fixedMonthl
 function render(){
   markNav();
   const c=document.getElementById('content');
-  const map={dashboard:renderDashboard,analysis:renderAnalysis,breakeven:renderBreakeven,business:renderBusiness,
+  const map={dashboard:renderDashboard,analysis:renderAnalysis,breakeven:renderBreakeven,business:renderBusiness,tools:renderTools,recruits:renderRecruits,
     sales:renderSales,finance:renderFinance,tasks:renderTasks,contracts:renderContracts,people:renderPeople,users:renderUsers};
   const p=PAGES.find(x=>x.id===current);
   (map[current]||(()=>{c.innerHTML='<div class="empty">ページがありません</div>'}))(c,p);
@@ -471,31 +473,51 @@ function renderBusiness(c,p){
     </tr>`;}).join('')}</tbody></table></div>`;
 }
 
-// ---- 売上管理 ----
+// ---- 売上管理（所属事業スコープ対応） ----
+const SALES_COLS=[{key:'saas',label:'SaaS事業',color:'#4f8cff'},{key:'juchu',label:'受託開発',color:'#22c55e'},{key:'consul',label:'コンサル',color:'#a78bfa'}];
+function presentSalesCols(s){
+  // データに含まれる事業列だけを抽出（事業スコープ時は1列のみ）
+  return SALES_COLS.filter(col=>s.some(x=>(x[col.key]||0)!==0)) ;
+}
 function renderSales(c,p){
   const ed=canEdit('sales');
-  setHeader(p.title,p.sub, ed?`<button class="btn ghost" onclick="editSales()">✏ 月次データを編集</button>`:roBadge());
-  const s=STORE.sales||[]; const total=sum(s,x=>x.total);
+  const s=STORE.sales||[];
+  const scoped = s.length && s[0]._scoped;  // 事業スコープ中なら事業名
+  let cols=presentSalesCols(s); if(!cols.length) cols=SALES_COLS;
+  const total=sum(s,x=>x.total);
   const maxMonth=s.length?months[s.indexOf(s.reduce((a,bb)=>bb.total>a.total?bb:a))]:'—';
+  setHeader(scoped?`売上管理（${scoped}）`:p.title, scoped?`${scoped}の売上推移`:p.sub,
+    (ed && !scoped)?`<button class="btn ghost" onclick="editSales()">✏ 月次データを編集</button>`:(scoped?`<span class="pill info">自事業のみ表示</span>`:roBadge()));
+  // 構成比チャート用セグメント
+  const seg=cols.map(col=>({label:col.label,value:sum(s,x=>x[col.key]||0),color:col.color}));
   c.innerHTML=`
     <div class="grid kpis">
       ${kpi('年間売上合計','💹',yen(total),'')}${kpi('月平均','📅',yen(total/12),'')}
       ${kpi('最高月','⬆️',yen(Math.max(...s.map(x=>x.total),0)),`<span class="muted">${maxMonth}</span>`)}
-      ${kpi('SaaS比率','📊',total?(sum(s,x=>x.saas)/total*100).toFixed(0)+'%':'0%',`<span class="muted">主力事業</span>`)}
+      ${cols.length>1?kpi('主力比率','📊',total?(Math.max(...seg.map(g=>g.value))/total*100).toFixed(0)+'%':'0%',`<span class="muted">最大事業</span>`):kpi('対象事業','🏢',scoped||cols[0].label,'')}
     </div><div style="height:16px"></div>
-    <div class="card"><h3>月次売上推移（事業別）</h3>${stackedSales()}</div><div style="height:16px"></div>
+    <div class="card"><h3>月次売上推移${cols.length>1?'（事業別）':''}</h3>${salesBars(s,cols)}</div><div style="height:16px"></div>
     <div class="card"><h3>月次明細</h3><table>
-    <thead><tr><th>月</th><th class="num">SaaS事業</th><th class="num">受託開発</th><th class="num">コンサル</th><th class="num">合計</th></tr></thead>
-    <tbody>${s.map((x,i)=>`<tr><td>${months[i]}</td><td class="num">${yen(x.saas)}</td><td class="num">${yen(x.juchu)}</td><td class="num">${yen(x.consul)}</td><td class="num"><b>${yen(x.total)}</b></td></tr>`).join('')}
-    <tr style="border-top:2px solid var(--line)"><td><b>合計</b></td><td class="num"><b>${yen(sum(s,x=>x.saas))}</b></td><td class="num"><b>${yen(sum(s,x=>x.juchu))}</b></td><td class="num"><b>${yen(sum(s,x=>x.consul))}</b></td><td class="num"><b>${yen(total)}</b></td></tr>
+    <thead><tr><th>月</th>${cols.map(col=>`<th class="num">${col.label}</th>`).join('')}${cols.length>1?'<th class="num">合計</th>':''}</tr></thead>
+    <tbody>${s.map((x,i)=>`<tr><td>${months[i]}</td>${cols.map(col=>`<td class="num">${yen(x[col.key]||0)}</td>`).join('')}${cols.length>1?`<td class="num"><b>${yen(x.total)}</b></td>`:''}</tr>`).join('')}
+    <tr style="border-top:2px solid var(--line)"><td><b>合計</b></td>${cols.map(col=>`<td class="num"><b>${yen(sum(s,x=>x[col.key]||0))}</b></td>`).join('')}${cols.length>1?`<td class="num"><b>${yen(total)}</b></td>`:''}</tr>
     </tbody></table></div>`;
+}
+function salesBars(s,cols){
+  const max=Math.max(...s.map(x=>x.total),1);
+  return `<div class="bars">${s.map((x,i)=>`<div class="bar" title="${months[i]} 計 ${yen(x.total)}">
+    <div style="width:70%;height:${x.total/max*100}%;display:flex;flex-direction:column;justify-content:flex-end;border-radius:6px 6px 0 0;overflow:hidden">
+      ${cols.slice().reverse().map(col=>`<div style="background:${col.color};height:${x.total?(x[col.key]||0)/x.total*100:0}%"></div>`).join('')}
+    </div><small>${i+1}月</small></div>`).join('')}</div>
+    <div class="legend">${cols.map(col=>`<span><i style="background:${col.color}"></i>${col.label}</span>`).join('')}</div>`;
 }
 
 // ---- 財務管理 ----
 function renderFinance(c,p){
   const ed=canEdit('finance');
-  setHeader(p.title,p.sub, ed?`<button class="btn ghost" onclick="editFinance()">✏ PL データを編集</button>`:roBadge());
+  setHeader(p.title,p.sub, ed?`<button class="btn" onclick="importTrialBalance()">📄 試算表を取り込む</button><button class="btn ghost" onclick="editFinance()">✏ PL データを編集</button>`:roBadge());
   const f=STORE.finance||[]; const y=ytd(); const opSeries=f.map((x,i)=>({label:(i+1)+'月',v:Math.max(x.op,0)}));
+  const detailMonth=f.findIndex(x=>x.sgaItems&&x.sgaItems.length);
   c.innerHTML=`
     <div class="grid kpis">
       ${kpi('売上高(年初来)','💹',yen(y.rev),'')}${kpi('売上総利益','📊',yen(y.rev-y.cogs),`<span class="muted">粗利率 ${y.gpRate.toFixed(1)}%</span>`)}
@@ -512,7 +534,12 @@ function renderFinance(c,p){
     <thead><tr><th>月</th><th class="num">売上高</th><th class="num">売上原価</th><th class="num">売上総利益</th><th class="num">販管費</th><th class="num">営業利益</th></tr></thead>
     <tbody>${f.map((x,i)=>`<tr><td>${months[i]}</td><td class="num">${yen(x.revenue)}</td><td class="num">${yen(x.cogs)}</td><td class="num">${yen(x.revenue-x.cogs)}</td><td class="num">${yen(x.sga)}</td><td class="num ${x.op>=0?'up':'down'}"><b>${yen(x.op)}</b></td></tr>`).join('')}
     <tr style="border-top:2px solid var(--line)"><td><b>合計</b></td><td class="num"><b>${yen(y.rev)}</b></td><td class="num"><b>${yen(y.cogs)}</b></td><td class="num"><b>${yen(y.rev-y.cogs)}</b></td><td class="num"><b>${yen(y.sga)}</b></td><td class="num"><b>${yen(y.op)}</b></td></tr>
-    </tbody></table></div>`;
+    </tbody></table></div>
+    ${detailMonth>=0?`<div style="height:16px"></div><div class="card"><h3>販管費の内訳 <span class="pill info">${months[detailMonth]}（試算表取込）</span></h3>
+      <table><thead><tr><th>科目</th><th class="num">金額</th></tr></thead><tbody>
+      ${f[detailMonth].sgaItems.map(it=>`<tr><td>${it.name}</td><td class="num">${yen(it.amount)}</td></tr>`).join('')}
+      <tr style="border-top:2px solid var(--line)"><td><b>合計</b></td><td class="num"><b>${yen(sum(f[detailMonth].sgaItems,it=>it.amount))}</b></td></tr>
+      </tbody></table></div>`:''}`;
 }
 
 // ---- タスク管理 ----
@@ -641,11 +668,15 @@ async function del(coll,id){
 }
 
 function editBusiness(id){
-  const x=(STORE.businesses||[]).find(z=>z.id===id)||{name:'',lead:'',status:'新規',target:0,actual:0,members:0,gmRate:0};
+  const x=(STORE.businesses||[]).find(z=>z.id===id)||{name:'',lead:'',status:'新規',target:0,actual:0,members:0,gmRate:0,salesKey:''};
+  const skLabels={'':'（紐付けなし）',saas:'SaaS列',juchu:'受託列',consul:'コンサル列'};
+  const skCur=skLabels[x.salesKey||''];
   openModal(id?'事業を編集':'事業を追加',`${field('事業名','f_name',x.name)}${field('責任者','f_lead',x.lead)}${selField('ステータス','f_status',x.status,['成長','安定','新規','縮小'])}
     <div class="field two"><label>目標 / 実績 売上(円)</label><input id="f_target" type="number" value="${x.target}"><input id="f_actual" type="number" value="${x.actual}"></div>
-    <div class="field two"><label>人員(名) / 粗利率(%)</label><input id="f_members" type="number" value="${x.members}"><input id="f_gm" type="number" value="${x.gmRate}"></div>`,
-    ()=>upsert('businesses',{id:id||b(),name:fv('f_name'),lead:fv('f_lead'),status:fv('f_status'),target:fnum('f_target'),actual:fnum('f_actual'),members:fnum('f_members'),gmRate:fnum('f_gm')},id));
+    <div class="field two"><label>人員(名) / 粗利率(%)</label><input id="f_members" type="number" value="${x.members}"><input id="f_gm" type="number" value="${x.gmRate}"></div>
+    ${selField('売上データの列（事業別売上の閲覧制限に使用）','f_sk',skCur,Object.values(skLabels))}`,
+    ()=>{const skMap={'（紐付けなし）':'','SaaS列':'saas','受託列':'juchu','コンサル列':'consul'};
+      return upsert('businesses',{id:id||b(),name:fv('f_name'),lead:fv('f_lead'),status:fv('f_status'),target:fnum('f_target'),actual:fnum('f_actual'),members:fnum('f_members'),gmRate:fnum('f_gm'),salesKey:skMap[fv('f_sk')]||''},id);});
 }
 function editTask(id){
   const x=(STORE.tasks||[]).find(t=>t.id===id)||{title:'',assignee:'',due:todayISO(),priority:'中',status:'未着手',biz:'全社'};
@@ -686,6 +717,125 @@ function editFinance(){
     async()=>{ STORE.finance=f.map((x,i)=>{const r=fnum('g_'+i+'_r'),co=fnum('g_'+i+'_c'),sg=fnum('g_'+i+'_s');return {month:i,revenue:r,cogs:co,sga:sg,op:r-co-sg};}); await persist('finance'); closeModal(); render(); });
 }
 
+// ---- 試算表(PDF)の取り込み：貼り付けたテキストから自動抽出 ----
+function parseAmount(str){
+  const m=String(str).match(/[△▲\-]?\s*[\d,]+/g);
+  if(!m||!m.length) return null;
+  let v=m[m.length-1];                 // 行の右端の数値を採用
+  const neg=/[△▲\-]/.test(v);
+  v=Number(v.replace(/[^\d]/g,''));
+  if(isNaN(v)) return null;
+  return neg?-v:v;
+}
+function parseTrialBalance(text){
+  const lines=text.split(/\r?\n/);
+  let revenue=null,cogs=null,sga=null; const sgaItems=[]; let inSga=false;
+  lines.forEach(line=>{
+    const l=line.replace(/\s/g,'');
+    if(!l) return;
+    if(revenue===null && /(売上高|純売上高|売上高合計|売上$)/.test(l)){ const n=parseAmount(line); if(n!==null){revenue=Math.abs(n);} return; }
+    if(cogs===null && /(売上原価|当期商品仕入高|製造原価|原価合計)/.test(l)){ const n=parseAmount(line); if(n!==null){cogs=Math.abs(n);} return; }
+    if(/(販売費及び一般管理費|販売費及一般管理費|販売費・一般管理費|販管費合計|販売管理費|販売費及び一般管理費合計)/.test(l)){ const n=parseAmount(line); if(n!==null) sga=Math.abs(n); inSga=true; return; }
+    if(inSga){
+      if(/(営業利益|営業損益|営業損失|経常利益|販管費合計|合計)/.test(l)){ const n=parseAmount(line); if(sga===null&&n!==null) sga=Math.abs(n); inSga=false; return; }
+      const n=parseAmount(line);
+      const label=line.replace(/[△▲\-]?\s*[\d,]+/g,'').replace(/[¥￥]/g,'').trim();
+      if(n!==null && label && label.length<=24) sgaItems.push({name:label,amount:Math.abs(n)});
+    }
+  });
+  if(sga===null && sgaItems.length) sga=sum(sgaItems,it=>it.amount);
+  return {revenue,cogs,sga,sgaItems};
+}
+function importTrialBalance(){
+  const monthOpts=months.map((m,i)=>`<option value="${i}">${m}</option>`).join('');
+  openModal('試算表の取り込み（PDF）',`
+    <div class="alert info" style="margin-top:0">PDFを開いて<b>文字を選択→コピー</b>し、下の枠に<b>貼り付け（⌘V）</b>してください。売上高・売上原価・販管費（と内訳）を自動で読み取ります。読み取り後に金額を修正できます。</div>
+    <div class="field"><label>対象月</label><select id="tb_month">${monthOpts}</select></div>
+    <div class="field"><label>試算表のテキストを貼り付け</label><textarea id="tb_text" rows="7" placeholder="例）&#10;売上高　12,000,000&#10;売上原価　5,760,000&#10;販売費及び一般管理費　3,600,000&#10;　役員報酬　850,000&#10;　給料手当　1,200,000 ..."></textarea></div>
+    <button class="btn ghost sm" onclick="runTBParse()">🔍 読み取る</button>
+    <div id="tb_result" style="margin-top:14px"></div>`,
+    async()=>{
+      if(!window._tbParsed){ alert('先に「読み取る」を押して内容を確認してください'); throw new Error('未読み取り'); }
+      const i=Number(fv('tb_month'));
+      const rev=fnum('tb_rev'), co=fnum('tb_cogs'), sg=fnum('tb_sga');
+      const f=STORE.finance||[];
+      const items=(window._tbParsed.sgaItems||[]);
+      f[i]={month:i,revenue:rev,cogs:co,sga:sg,op:rev-co-sg, sgaItems:items};
+      STORE.finance=f; await persist('finance'); window._tbParsed=null; closeModal(); render();
+    });
+}
+function runTBParse(){
+  const r=parseTrialBalance(fv('tb_text')); window._tbParsed=r;
+  document.getElementById('tb_result').innerHTML=`
+    <div class="alert ${(r.revenue||r.cogs||r.sga)?'ok':'warn'}">${(r.revenue||r.cogs||r.sga)?'読み取りました。金額を確認・修正して「保存」を押してください。':'うまく読み取れませんでした。下の欄に手入力でも保存できます。'}</div>
+    <div class="field two"><label>売上高 / 売上原価</label><input id="tb_rev" type="number" value="${r.revenue||0}"><input id="tb_cogs" type="number" value="${r.cogs||0}"></div>
+    <div class="field"><label>販管費 合計</label><input id="tb_sga" type="number" value="${r.sga||0}"></div>
+    ${r.sgaItems&&r.sgaItems.length?`<div class="field"><label>販管費の内訳（${r.sgaItems.length}件を検出）</label>
+      <div style="max-height:140px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:8px">
+      ${r.sgaItems.map(it=>`<div class="stat-line"><span>${it.name}</span><b>${yen(it.amount)}</b></div>`).join('')}</div></div>`:''}`;
+}
+
+// ---- ツール一元管理 ----
+function renderTools(c,p){
+  const ed=canEdit('tools');
+  setHeader(p.title,p.sub, ed?`<button class="btn" onclick="editTool()">＋ ツールを追加</button>`:roBadge());
+  const tools=STORE.tools||[];
+  const cats={}; tools.forEach(t=>{(cats[t.category||'その他']=cats[t.category||'その他']||[]).push(t);});
+  if(!tools.length){ c.innerHTML='<div class="card"><div class="empty">ツールが登録されていません</div></div>'; return; }
+  c.innerHTML=Object.entries(cats).map(([cat,list])=>`
+    <div class="card" style="margin-bottom:16px"><h3>${cat}</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px">
+      ${list.map(t=>`<div style="position:relative;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;align-items:center;gap:10px">
+        <a href="${t.url}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--txt);flex:1;min-width:0">
+          <span style="font-size:22px">${t.icon||'🔗'}</span>
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b>${t.name}</b><br><span class="muted" style="font-size:11px">開く ↗</span></span>
+        </a>
+        ${ed?`<button class="icon-btn" onclick="editTool('${t.id}')">✏️</button><button class="icon-btn" onclick="del('tools','${t.id}')">🗑</button>`:''}
+      </div>`).join('')}
+    </div></div>`).join('');
+}
+function editTool(id){
+  const x=(STORE.tools||[]).find(z=>z.id===id)||{name:'',url:'https://',category:'その他',icon:'🔗'};
+  openModal(id?'ツールを編集':'ツールを追加',`${field('ツール名','t_name',x.name)}${field('URL','t_url',x.url)}${field('カテゴリ','t_cat',x.category)}${field('アイコン（絵文字1つ）','t_icon',x.icon)}`,
+    ()=>upsert('tools',{id:id||b(),name:fv('t_name'),url:fv('t_url'),category:fv('t_cat')||'その他',icon:fv('t_icon')||'🔗'},id));
+}
+
+// ---- 採用管理 ----
+const RECRUIT_STAGES=['応募','書類選考','面接','内定','入社','見送り'];
+function renderRecruits(c,p){
+  const ed=canEdit('recruits');
+  setHeader(p.title,p.sub, ed?`<button class="btn" onclick="editRecruit()">＋ 候補者を追加</button>`:roBadge());
+  const rs=STORE.recruits||[];
+  const cnt=s=>rs.filter(r=>r.stage===s).length;
+  const active=rs.filter(r=>!['入社','見送り'].includes(r.stage)).length;
+  c.innerHTML=`
+    <div class="grid kpis">
+      ${kpi('候補者数','🧑‍💼',rs.length,'')}${kpi('選考中','🔄',active,'')}
+      ${kpi('内定','🎉',cnt('内定'),'')}${kpi('入社','✅',cnt('入社'),'')}
+    </div><div style="height:16px"></div>
+    <div class="card"><h3>選考ファネル</h3>
+      ${['応募','書類選考','面接','内定','入社'].map(st=>{const n=cnt(st);const max=rs.length||1;return `
+        <div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>${st}</span><b>${n}名</b></div>
+        <div class="progress"><i style="width:${n/max*100}%"></i></div></div>`;}).join('')}
+    </div><div style="height:16px"></div>
+    <div class="card"><table>
+    <thead><tr><th>候補者</th><th>募集ポジション</th><th>選考状況</th><th>流入経路</th><th>応募日</th><th>メモ</th>${ed?'<th></th>':''}</tr></thead>
+    <tbody>${rs.slice().sort((a,b)=>RECRUIT_STAGES.indexOf(a.stage)-RECRUIT_STAGES.indexOf(b.stage)).map(r=>`<tr>
+      <td><b>${r.name}</b></td><td>${r.position}</td>
+      <td><span class="pill ${r.stage==='入社'?'ok':r.stage==='内定'?'info':r.stage==='見送り'?'bad':'muted'}">${r.stage}</span></td>
+      <td><span class="muted">${r.source||'—'}</span></td><td>${fmtDate(r.applied)}</td><td class="muted" style="font-size:12px">${r.note||''}</td>
+      ${ed?`<td class="row-actions"><button class="icon-btn" onclick="editRecruit('${r.id}')">✏️</button><button class="icon-btn" onclick="del('recruits','${r.id}')">🗑</button></td>`:''}
+    </tr>`).join('')||`<tr><td colspan="${ed?7:6}"><div class="empty">候補者がいません</div></td></tr>`}</tbody></table></div>`;
+}
+function editRecruit(id){
+  const x=(STORE.recruits||[]).find(z=>z.id===id)||{name:'',position:'',stage:'応募',source:'求人媒体',applied:todayISO(),note:''};
+  openModal(id?'候補者を編集':'候補者を追加',`${field('候補者名','r_name',x.name)}${field('募集ポジション','r_pos',x.position)}
+    ${selField('選考状況','r_stage',x.stage,RECRUIT_STAGES)}
+    ${selField('流入経路','r_src',x.source,['リファラル','求人媒体','エージェント','直接応募','SNS','その他'])}
+    ${field('応募日','r_applied',x.applied,'date')}${field('メモ','r_note',x.note)}`,
+    ()=>upsert('recruits',{id:id||b(),name:fv('r_name'),position:fv('r_pos'),stage:fv('r_stage'),source:fv('r_src'),applied:fv('r_applied'),note:fv('r_note')},id));
+}
+
 // ---- パスワード変更（本人） ----
 function changePassword(){
   openModal('パスワード変更',`${field('現在のパスワード','p_old','','password')}${field('新しいパスワード（6文字以上）','p_new','','password')}`,
@@ -694,24 +844,27 @@ function changePassword(){
 
 // ---- アカウントの追加・編集（管理者） ----
 function editUser(u){
-  const isNew=!u; u=u||{username:'',display_name:'',role:'viewer',pages:[]};
+  const isNew=!u; u=u||{username:'',display_name:'',role:'viewer',pages:[],biz:'全社'};
   const pageChecks=PAGES.map(p=>`<label><input type="checkbox" class="u_page" value="${p.id}"${(u.pages||[]).includes(p.id)?' checked':''}> ${p.icon} ${p.name}</label>`).join('');
+  const bizOpts=['全社',...(STORE.businesses||[]).map(z=>z.name)];
   openModal(isNew?'メンバーを追加':'メンバーを編集',`
     ${field('ユーザーID（ログインに使用）','u_user',u.username)}
     ${isNew?'':'<p class="muted" style="font-size:11px;margin:-8px 0 12px">※ ユーザーIDは変更できません</p>'}
     ${field('表示名','u_name',u.display_name)}
     ${selField('権限','u_role',roleLabel(u.role),['閲覧者','編集者','管理者'])}
+    ${selField('所属事業（売上を自事業のみに制限する場合に選択）','u_biz',u.biz||'全社',bizOpts)}
     ${field(isNew?'初期パスワード（6文字以上）':'パスワード（変更する場合のみ入力）','u_pw','','password')}
     <div class="field"><label>表示できるページ（権限が「管理者」の場合は全ページ）</label><div class="checks">${pageChecks}</div></div>`,
     async()=>{
       const roleMap={'閲覧者':'viewer','編集者':'editor','管理者':'admin'};
       const role=roleMap[fv('u_role')];
       const pages=[...document.querySelectorAll('.u_page:checked')].map(e=>e.value);
+      const biz=fv('u_biz');
       const pw=fv('u_pw');
       if(isNew){
-        await api('POST','/api/users',{username:fv('u_user'),display_name:fv('u_name'),role,pages,password:pw});
+        await api('POST','/api/users',{username:fv('u_user'),display_name:fv('u_name'),role,pages,biz,password:pw});
       }else{
-        const body={display_name:fv('u_name'),role,pages}; if(pw) body.password=pw;
+        const body={display_name:fv('u_name'),role,pages,biz}; if(pw) body.password=pw;
         const idEl=u.id; await api('PUT','/api/users/'+idEl,body);
       }
       closeModal(); render();

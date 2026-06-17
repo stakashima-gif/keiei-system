@@ -1,16 +1,7 @@
-# Render.com 用の自動設定ファイル（Blueprint）
-# これがあると、Renderがボタン操作だけでサーバーを設置してくれます。
 services:
   - type: web
     name: keiei-system
     runtime: python
-    plan: starter            # データを永続保存するには有料プラン(Starter/約$7月)が必要
+    plan: free
     buildCommand: ""
     startCommand: python server.py
-    envVars:
-      - key: DATA_DIR
-        value: /var/data     # 下のディスクにデータを保存（再起動しても消えない）
-    disk:
-      name: keiei-data
-      mountPath: /var/data
-      sizeGB: 1

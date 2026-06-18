@@ -141,6 +141,7 @@
   </div>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
 //==================================================================
 // API クライアント
@@ -749,11 +750,15 @@ function parseTrialBalance(text){
 function importTrialBalance(){
   const monthOpts=months.map((m,i)=>`<option value="${i}">${m}</option>`).join('');
   openModal('試算表の取り込み（PDF）',`
-    <div class="alert info" style="margin-top:0">PDFを開いて<b>文字を選択→コピー</b>し、下の枠に<b>貼り付け（⌘V）</b>してください。売上高・売上原価・販管費（と内訳）を自動で読み取ります。読み取り後に金額を修正できます。</div>
+    <div class="alert info" style="margin-top:0">税理士から届いた<b>PDFファイルをそのまま選択</b>すると、中の文字を自動で読み取り、売上高・売上原価・販管費（と内訳）を抽出します。読み取り後に金額を確認・修正してから保存してください。</div>
     <div class="field"><label>対象月</label><select id="tb_month">${monthOpts}</select></div>
-    <div class="field"><label>試算表のテキストを貼り付け</label><textarea id="tb_text" rows="7" placeholder="例）&#10;売上高　12,000,000&#10;売上原価　5,760,000&#10;販売費及び一般管理費　3,600,000&#10;　役員報酬　850,000&#10;　給料手当　1,200,000 ..."></textarea></div>
-    <button class="btn ghost sm" onclick="runTBParse()">🔍 読み取る</button>
-    <div id="tb_result" style="margin-top:14px"></div>`,
+    <div class="field"><label>① PDFファイルを選択</label><input id="tb_file" type="file" accept="application/pdf,.pdf" onchange="handleTBFile(this.files&&this.files[0])"></div>
+    <div id="tb_pdfstatus" class="muted" style="font-size:12px;margin:-6px 0 12px"></div>
+    <details style="margin-bottom:12px"><summary class="muted" style="font-size:12px;cursor:pointer">うまく読めない場合：テキストを貼り付けて読み取る</summary>
+      <div class="field" style="margin-top:10px"><textarea id="tb_text" rows="6" placeholder="PDFの文字をコピーして貼り付け…"></textarea></div>
+      <button class="btn ghost sm" onclick="runTBParse()">🔍 貼り付けたテキストを読み取る</button>
+    </details>
+    <div id="tb_result" style="margin-top:6px"></div>`,
     async()=>{
       if(!window._tbParsed){ alert('先に「読み取る」を押して内容を確認してください'); throw new Error('未読み取り'); }
       const i=Number(fv('tb_month'));
@@ -763,6 +768,30 @@ function importTrialBalance(){
       f[i]={month:i,revenue:rev,cogs:co,sga:sg,op:rev-co-sg, sgaItems:items};
       STORE.finance=f; await persist('finance'); window._tbParsed=null; closeModal(); render();
     });
+}
+async function handleTBFile(file){
+  if(!file) return;
+  const st=document.getElementById('tb_pdfstatus');
+  if(!window.pdfjsLib){ st.innerHTML='<span class="down">PDF読み取りライブラリを読み込めませんでした。ネット接続を確認するか、テキスト貼り付けをご利用ください。</span>'; return; }
+  if(!pdfjsLib.GlobalWorkerOptions.workerSrc) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  st.textContent='PDFを読み取り中…';
+  try{
+    const buf=await file.arrayBuffer();
+    const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+    let text='';
+    for(let p=1;p<=pdf.numPages;p++){
+      const page=await pdf.getPage(p);
+      const content=await page.getTextContent();
+      const lines={};
+      content.items.forEach(it=>{ if(!it.str) return; const y=Math.round(it.transform[5]); (lines[y]=lines[y]||[]).push({x:it.transform[4],s:it.str}); });
+      Object.keys(lines).map(Number).sort((a,b)=>b-a).forEach(y=>{ text+=lines[y].sort((a,b)=>a.x-b.x).map(o=>o.s).join(' ')+'\n'; });
+      text+='\n';
+    }
+    const ta=document.getElementById('tb_text'); if(ta) ta.value=text;
+    if(!text.replace(/\s/g,'')){ st.innerHTML='<span class="down">文字を抽出できませんでした（スキャン画像のPDFの可能性）。テキスト貼り付けをお試しください。</span>'; return; }
+    st.innerHTML=`<span class="up">「${file.name}」を読み取りました（${pdf.numPages}ページ）。下の内容を確認してください。</span>`;
+    runTBParse();
+  }catch(e){ st.innerHTML='<span class="down">PDFの読み取りに失敗しました（'+e.message+'）。テキスト貼り付けをお試しください。</span>'; }
 }
 function runTBParse(){
   const r=parseTrialBalance(fv('tb_text')); window._tbParsed=r;

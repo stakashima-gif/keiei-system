@@ -30,7 +30,7 @@ PAGE_COLLECTIONS = {
     "analysis":  ["company", "sales", "finance", "cost", "people"],
     "breakeven": ["cost", "finance"],
     "business":  ["businesses"],
-    "sales":     ["sales"],
+    "sales":     ["sales", "businesses"],
     "finance":   ["finance"],
     "tasks":     ["tasks", "businesses"],
     "contracts": ["contracts"],
@@ -65,50 +65,54 @@ def verify_pw(password, salt, hexhash):
     return hmac.compare_digest(h, hexhash)
 
 def seed_store():
-    """サンプルの会社データ（フロントの初期データと同等）"""
+    """サンプルの会社データ。売上は各事業のID(=列キー)ごとに保持する。"""
     def gid(p): return p + secrets.token_hex(4)
-    base = [12, 11.5, 13, 12.8, 14, 15.2, 14.5, 16, 15.8, 17, 18.5, 17.2]
+    def days(n): return time.strftime("%Y-%m-%d", time.localtime(now() + n * 86400))
+    # 4事業（売上は各事業のID(=列キー)ごとに保持。事業を追加すれば売上列も自動で増える）
+    businesses = [
+        {"id": gid("b"), "name": "BPO事業",   "lead": "—", "status": "成長", "target": 72000000, "actual": 60000000, "members": 10, "gmRate": 40},
+        {"id": gid("b"), "name": "RPO事業",   "lead": "—", "status": "成長", "target": 48000000, "actual": 41000000, "members": 8,  "gmRate": 45},
+        {"id": gid("b"), "name": "SES事業",   "lead": "—", "status": "安定", "target": 96000000, "actual": 99000000, "members": 22, "gmRate": 25},
+        {"id": gid("b"), "name": "ライバー事業", "lead": "—", "status": "新規", "target": 36000000, "actual": 21000000, "members": 6,  "gmRate": 55},
+    ]
+    monthly_base = [5.0, 3.4, 8.2, 1.8]  # 各事業の月次売上ベース（百万円）
     sales = []
     finance = []
-    for i, v in enumerate(base):
-        tot = round(v * 1000000)
-        sales.append({"month": i, "total": tot,
-                      "saas": round(tot * 0.45), "juchu": round(tot * 0.40), "consul": round(tot * 0.15)})
-        cogs = round(tot * 0.48); sga = round(tot * 0.30) + (900000 if i % 3 == 0 else 0)
+    for i in range(12):
+        row = {"month": i, "total": 0}
+        for j, b in enumerate(businesses):
+            amt = round(monthly_base[j] * 1000000 * (1 + i * 0.02))
+            row[b["id"]] = amt
+            row["total"] += amt
+        sales.append(row)
+        tot = row["total"]
+        cogs = round(tot * 0.55); sga = round(tot * 0.30) + (900000 if i % 3 == 0 else 0)
         finance.append({"month": i, "revenue": tot, "cogs": cogs, "sga": sga, "op": tot - cogs - sga})
-    def days(n): return time.strftime("%Y-%m-%d", time.localtime(now() + n * 86400))
     return {
-        "company": {"name": "株式会社サンプル", "fy": "2026", "cashTarget": 30000000},
-        "businesses": [
-            {"id": gid("b"), "name": "SaaS事業", "lead": "山田 太郎", "status": "成長", "target": 120000000, "actual": 98000000, "members": 8, "gmRate": 72, "salesKey": "saas"},
-            {"id": gid("b"), "name": "受託開発事業", "lead": "佐藤 花子", "status": "安定", "target": 80000000, "actual": 84000000, "members": 12, "gmRate": 38, "salesKey": "juchu"},
-            {"id": gid("b"), "name": "コンサル事業", "lead": "鈴木 一郎", "status": "新規", "target": 30000000, "actual": 18000000, "members": 4, "gmRate": 55, "salesKey": "consul"},
-        ],
+        "company": {"name": "自社", "fy": "2026", "cashTarget": 30000000},
+        "businesses": businesses,
         "sales": sales,
         "finance": finance,
-        "cost": {"fixedMonthly": 9800000, "variableRate": 0.42, "priceUnit": 50000},
+        "cost": {"fixedMonthly": 9800000, "variableRate": 0.55, "priceUnit": 50000},
         "tasks": [
-            {"id": gid("t"), "title": "Q2 予算レビュー会議", "assignee": "山田 太郎", "due": days(3), "priority": "高", "status": "進行中", "biz": "全社"},
-            {"id": gid("t"), "title": "新規顧客向け提案書作成", "assignee": "鈴木 一郎", "due": days(1), "priority": "高", "status": "未着手", "biz": "コンサル事業"},
-            {"id": gid("t"), "title": "SaaS解約率の分析", "assignee": "山田 太郎", "due": days(7), "priority": "中", "status": "進行中", "biz": "SaaS事業"},
-            {"id": gid("t"), "title": "受託案件Aの納品", "assignee": "佐藤 花子", "due": days(-2), "priority": "高", "status": "進行中", "biz": "受託開発事業"},
-            {"id": gid("t"), "title": "採用面接（エンジニア2名）", "assignee": "人事部", "due": days(5), "priority": "中", "status": "未着手", "biz": "全社"},
-            {"id": gid("t"), "title": "月次決算の確定", "assignee": "経理部", "due": days(10), "priority": "中", "status": "完了", "biz": "全社"},
+            {"id": gid("t"), "title": "Q2 予算レビュー会議", "assignee": "—", "due": days(3), "priority": "高", "status": "進行中", "biz": "全社"},
+            {"id": gid("t"), "title": "SES新規エンジニア面談", "assignee": "—", "due": days(1), "priority": "高", "status": "未着手", "biz": "SES事業"},
+            {"id": gid("t"), "title": "RPO提案資料の作成", "assignee": "—", "due": days(7), "priority": "中", "status": "進行中", "biz": "RPO事業"},
+            {"id": gid("t"), "title": "BPO案件の納品", "assignee": "—", "due": days(-2), "priority": "高", "status": "進行中", "biz": "BPO事業"},
+            {"id": gid("t"), "title": "ライバー新規スカウト", "assignee": "—", "due": days(5), "priority": "中", "status": "未着手", "biz": "ライバー事業"},
+            {"id": gid("t"), "title": "月次決算の確定", "assignee": "—", "due": days(10), "priority": "中", "status": "完了", "biz": "全社"},
         ],
         "contracts": [
-            {"id": gid("c"), "client": "株式会社アルファ", "type": "保守契約", "amount": 2400000, "start": "2025-04-01", "end": days(20), "status": "有効", "auto": True},
-            {"id": gid("c"), "client": "ベータ商事", "type": "SaaS年間", "amount": 3600000, "start": "2025-07-01", "end": days(95), "status": "有効", "auto": True},
-            {"id": gid("c"), "client": "ガンマ製作所", "type": "受託開発", "amount": 12000000, "start": "2026-01-01", "end": days(8), "status": "有効", "auto": False},
-            {"id": gid("c"), "client": "デルタ物流", "type": "コンサル", "amount": 4800000, "start": "2025-10-01", "end": days(-5), "status": "更新待ち", "auto": False},
-            {"id": gid("c"), "client": "イプシロン", "type": "SaaS年間", "amount": 1800000, "start": "2026-02-01", "end": days(240), "status": "有効", "auto": True},
+            {"id": gid("c"), "client": "取引先A", "type": "BPO業務委託", "amount": 2400000, "start": "2025-04-01", "end": days(20), "status": "有効", "auto": True},
+            {"id": gid("c"), "client": "取引先B", "type": "RPO契約", "amount": 3600000, "start": "2025-07-01", "end": days(95), "status": "有効", "auto": True},
+            {"id": gid("c"), "client": "取引先C", "type": "SES契約", "amount": 12000000, "start": "2026-01-01", "end": days(8), "status": "有効", "auto": False},
+            {"id": gid("c"), "client": "取引先D", "type": "ライバー業務委託", "amount": 4800000, "start": "2025-10-01", "end": days(-5), "status": "更新待ち", "auto": False},
         ],
         "people": [
-            {"id": gid("p"), "name": "山田 太郎", "role": "事業部長", "biz": "SaaS事業", "type": "正社員", "cost": 850000, "joined": "2020-04-01", "rating": "A"},
-            {"id": gid("p"), "name": "佐藤 花子", "role": "PM", "biz": "受託開発事業", "type": "正社員", "cost": 720000, "joined": "2021-09-01", "rating": "A"},
-            {"id": gid("p"), "name": "鈴木 一郎", "role": "コンサルタント", "biz": "コンサル事業", "type": "正社員", "cost": 680000, "joined": "2023-04-01", "rating": "B"},
-            {"id": gid("p"), "name": "田中 美咲", "role": "エンジニア", "biz": "SaaS事業", "type": "正社員", "cost": 580000, "joined": "2022-04-01", "rating": "A"},
-            {"id": gid("p"), "name": "高橋 健", "role": "エンジニア", "biz": "受託開発事業", "type": "業務委託", "cost": 700000, "joined": "2024-01-01", "rating": "B"},
-            {"id": gid("p"), "name": "伊藤 葵", "role": "デザイナー", "biz": "SaaS事業", "type": "正社員", "cost": 520000, "joined": "2023-10-01", "rating": "B"},
+            {"id": gid("p"), "name": "—", "role": "事業部長", "biz": "BPO事業", "type": "正社員", "cost": 700000, "joined": "2022-04-01", "rating": "A"},
+            {"id": gid("p"), "name": "—", "role": "リクルーター", "biz": "RPO事業", "type": "正社員", "cost": 600000, "joined": "2023-04-01", "rating": "B"},
+            {"id": gid("p"), "name": "—", "role": "エンジニア", "biz": "SES事業", "type": "正社員", "cost": 650000, "joined": "2021-09-01", "rating": "A"},
+            {"id": gid("p"), "name": "—", "role": "マネージャー", "biz": "ライバー事業", "type": "正社員", "cost": 550000, "joined": "2024-01-01", "rating": "B"},
         ],
         "tools": [
             {"id": gid("k"), "name": "Slack", "url": "https://slack.com", "category": "コミュニケーション", "icon": "💬"},
@@ -180,11 +184,10 @@ def scope_sales(u, sales):
     key = None
     for b in DB["store"].get("businesses", []):
         if b["name"] == biz:
-            key = b.get("salesKey")
+            key = b["id"]
     if not key:
         return sales
-    return [{"month": r.get("month"), "saas": 0, "juchu": 0, "consul": 0,
-             key: r.get(key, 0), "total": r.get(key, 0), "_scoped": biz} for r in sales]
+    return [{"month": r.get("month"), key: r.get(key, 0), "total": r.get(key, 0), "_scoped": biz} for r in sales]
 
 def readable_collections(u):
     if u["role"] == "admin":

@@ -306,16 +306,10 @@ function barChart(data, opts={}){
   const max=Math.max(...data.map(d=>d.v),1); const cls=opts.green?'b b2':'b';
   return `<div class="bars">${data.map(d=>`<div class="bar" title="${d.label}: ${opts.fmt?opts.fmt(d.v):d.v}"><div class="${cls}" style="height:${Math.max(d.v/max*100,1)}%"></div><small>${d.label}</small></div>`).join('')}</div>`;
 }
-function stackedSales(){
-  const s=STORE.sales||[]; const max=Math.max(...s.map(x=>x.total),1);
-  return `<div class="bars">${s.map((x,i)=>`<div class="bar" title="${months[i]} 計 ${yen(x.total)}">
-    <div style="width:70%;height:${x.total/max*100}%;display:flex;flex-direction:column;justify-content:flex-end;border-radius:6px 6px 0 0;overflow:hidden">
-      <div style="background:#a78bfa;height:${x.consul/x.total*100}%"></div>
-      <div style="background:#22c55e;height:${x.juchu/x.total*100}%"></div>
-      <div style="background:#4f8cff;height:${x.saas/x.total*100}%"></div></div>
-    <small>${i+1}月</small></div>`).join('')}</div>
-    <div class="legend"><span><i style="background:#4f8cff"></i>SaaS</span><span><i style="background:#22c55e"></i>受託</span><span><i style="background:#a78bfa"></i>コンサル</span></div>`;
-}
+// 事業（売上の列）は登録済みの事業から動的に生成。事業ID をキーにする
+const PALETTE=['#4f8cff','#22c55e','#a78bfa','#f59e0b','#06b6d4','#ef4444','#ec4899','#14b8a6'];
+function salesCols(){ return (STORE.businesses||[]).map((bz,i)=>({key:bz.id,label:bz.name,color:PALETTE[i%PALETTE.length]})); }
+function stackedSales(){ return salesBars(STORE.sales||[], salesCols()); }
 function donut(segments, size=140){
   const total=sum(segments,s=>s.value)||1; let acc=0; const r=size/2-12, c=size/2, circ=2*Math.PI*r;
   const arcs=segments.map(s=>{const frac=s.value/total; const dash=frac*circ; const off=-acc*circ; acc+=frac;
@@ -335,7 +329,10 @@ function legendStat(k,v){ return `<div class="stat-line"><span class="muted">${k
 //==================================================================
 // 集計
 //==================================================================
-function ytd(){ const f=STORE.finance||[]; const rev=sum(f,x=>x.revenue),op=sum(f,x=>x.op),cogs=sum(f,x=>x.cogs),sga=sum(f,x=>x.sga);
+// 売上は「売上管理(事業別売上)」を正データとする。財務(PL)の売上もここに連動する
+function salesTotal(i){ const s=STORE.sales||[]; return (s[i]||{}).total||0; }
+function monthOp(i){ const x=(STORE.finance||[])[i]||{}; return salesTotal(i)-(x.cogs||0)-(x.sga||0); }
+function ytd(){ const f=STORE.finance||[]; const rev=sum(STORE.sales,x=>x.total); const cogs=sum(f,x=>x.cogs),sga=sum(f,x=>x.sga); const op=rev-cogs-sga;
   return {rev,op,cogs,sga,opRate:rev?op/rev*100:0,gpRate:rev?(rev-cogs)/rev*100:0}; }
 function laborTotal(){ return sum(STORE.people,p=>p.cost)*12; }
 function breakeven(){ const {fixedMonthly,variableRate}=STORE.cost||{fixedMonthly:0,variableRate:0}; const cmRate=1-variableRate;
@@ -356,8 +353,8 @@ function render(){
 // ---- ダッシュボード ----
 function renderDashboard(c,p){
   setHeader(p.title,p.sub,'');
-  const y=ytd(); const be=breakeven(); const f=STORE.finance||[];
-  const prevRev=f.slice(0,6).reduce((a,x)=>a+x.revenue,0), curRev=f.slice(6).reduce((a,x)=>a+x.revenue,0);
+  const y=ytd(); const be=breakeven(); const f=STORE.finance||[]; const s=STORE.sales||[];
+  const prevRev=s.slice(0,6).reduce((a,x)=>a+x.total,0), curRev=s.slice(6).reduce((a,x)=>a+x.total,0);
   const growth=prevRev?(curRev-prevRev)/prevRev*100:0;
   const overdue=(STORE.tasks||[]).filter(t=>t.status!=='完了'&&t.due<todayISO()).length;
   const expiring=(STORE.contracts||[]).filter(ct=>daysTo(ct.end)<=30&&daysTo(ct.end)>=0).length;
@@ -374,8 +371,7 @@ function renderDashboard(c,p){
     <div class="two-col">
       <div class="card"><h3>月次売上推移（事業別）<span class="pill info">FY${(STORE.company||{}).fy||''}</span></h3>${stackedSales()}</div>
       <div class="card"><h3>事業別売上構成</h3>
-        ${donut([{label:'SaaS事業',value:sum(STORE.sales,x=>x.saas),color:'#4f8cff'},{label:'受託開発事業',value:sum(STORE.sales,x=>x.juchu),color:'#22c55e'},{label:'コンサル事業',value:sum(STORE.sales,x=>x.consul),color:'#a78bfa'}])}
-        ${legendList([{label:'SaaS事業',value:sum(STORE.sales,x=>x.saas),color:'#4f8cff'},{label:'受託開発事業',value:sum(STORE.sales,x=>x.juchu),color:'#22c55e'},{label:'コンサル事業',value:sum(STORE.sales,x=>x.consul),color:'#a78bfa'}])}
+        ${(()=>{const seg=salesCols().map(col=>({label:col.label,value:sum(STORE.sales,x=>x[col.key]||0),color:col.color})); return donut(seg)+legendList(seg);})()}
       </div></div>
     <div style="height:16px"></div>
     <div class="three-col">
@@ -383,8 +379,8 @@ function renderDashboard(c,p){
         <div class="stat-line"><span>月次固定費</span><b>${yen(be.fixedMonthly)}</b></div>
         <div class="stat-line"><span>限界利益率</span><b>${(be.cmRate*100).toFixed(0)}%</b></div>
         <div class="stat-line"><span>損益分岐売上(月)</span><b>${yen(be.beRevenue)}</b></div>
-        <div class="stat-line"><span>当月売上</span><b>${yen((f[f.length-1]||{}).revenue||0)}</b></div>
-        ${(()=>{const m=(f[f.length-1]||{}).revenue||0;const ok=m>=be.beRevenue;return `<div class="alert ${ok?'ok':'bad'}" style="margin-top:12px">${ok?'✅ 損益分岐点を上回っています':'⚠️ 損益分岐点を下回っています'}（達成率 ${be.beRevenue?(m/be.beRevenue*100).toFixed(0):0}%）</div>`;})()}
+        <div class="stat-line"><span>当月売上</span><b>${yen(salesTotal(s.length-1))}</b></div>
+        ${(()=>{const m=salesTotal(s.length-1);const ok=m>=be.beRevenue;return `<div class="alert ${ok?'ok':'bad'}" style="margin-top:12px">${ok?'✅ 損益分岐点を上回っています':'⚠️ 損益分岐点を下回っています'}（達成率 ${be.beRevenue?(m/be.beRevenue*100).toFixed(0):0}%）</div>`;})()}
       </div>
       <div class="card"><h3>事業セグメント</h3>
         ${(STORE.businesses||[]).map(bz=>{const a=bz.target?bz.actual/bz.target*100:0;return `<div style="margin-bottom:12px">
@@ -400,7 +396,7 @@ function renderDashboard(c,p){
 function renderAnalysis(c,p){
   setHeader(p.title,p.sub,'');
   const y=ytd(); const f=STORE.finance||[]; const be=breakeven(); const labor=laborTotal();
-  const opSeries=f.map((x,i)=>({label:(i+1)+'月',v:Math.max(x.op,0)}));
+  const opSeries=f.map((x,i)=>({label:(i+1)+'月',v:Math.max(monthOp(i),0)}));
   const gp=y.rev-y.cogs;
   const checks=[
     {k:'営業利益率',good:y.opRate>=10,target:'10%以上',cur:y.opRate.toFixed(1)+'%'},
@@ -435,7 +431,7 @@ function renderAnalysis(c,p){
 function renderBreakeven(c,p){
   const editable=canEdit('breakeven');
   setHeader(p.title,p.sub, editable?`<button class="btn ghost" onclick="editCost()">⚙ 前提条件を編集</button>`:'');
-  const be=breakeven(); const f=STORE.finance||[]; const curRev=(f[f.length-1]||{}).revenue||0;
+  const be=breakeven(); const s=STORE.sales||[]; const curRev=salesTotal(s.length-1);
   const rows=[]; for(let m=0.6;m<=1.601;m+=0.2){ const rev=be.beRevenue*m; const vc=rev*be.variableRate; rows.push({rev,vc,fc:be.fixedMonthly,profit:rev-vc-be.fixedMonthly}); }
   c.innerHTML=`
     <div class="grid kpis">
@@ -474,17 +470,16 @@ function renderBusiness(c,p){
     </tr>`;}).join('')}</tbody></table></div>`;
 }
 
-// ---- 売上管理（所属事業スコープ対応） ----
-const SALES_COLS=[{key:'saas',label:'SaaS事業',color:'#4f8cff'},{key:'juchu',label:'受託開発',color:'#22c55e'},{key:'consul',label:'コンサル',color:'#a78bfa'}];
+// ---- 売上管理（所属事業スコープ対応・事業に動的連動） ----
 function presentSalesCols(s){
-  // データに含まれる事業列だけを抽出（事業スコープ時は1列のみ）
-  return SALES_COLS.filter(col=>s.some(x=>(x[col.key]||0)!==0)) ;
+  // データの行に存在する事業列だけを抽出（事業スコープ時は所属事業1列のみ）
+  return salesCols().filter(col=>s.some(x=>(col.key in x)));
 }
 function renderSales(c,p){
   const ed=canEdit('sales');
   const s=STORE.sales||[];
   const scoped = s.length && s[0]._scoped;  // 事業スコープ中なら事業名
-  let cols=presentSalesCols(s); if(!cols.length) cols=SALES_COLS;
+  let cols=presentSalesCols(s); if(!cols.length) cols=salesCols();
   const total=sum(s,x=>x.total);
   const maxMonth=s.length?months[s.indexOf(s.reduce((a,bb)=>bb.total>a.total?bb:a))]:'—';
   setHeader(scoped?`売上管理（${scoped}）`:p.title, scoped?`${scoped}の売上推移`:p.sub,
@@ -517,7 +512,7 @@ function salesBars(s,cols){
 function renderFinance(c,p){
   const ed=canEdit('finance');
   setHeader(p.title,p.sub, ed?`<button class="btn" onclick="importTrialBalance()">📄 試算表を取り込む</button><button class="btn ghost" onclick="editFinance()">✏ PL データを編集</button>`:roBadge());
-  const f=STORE.finance||[]; const y=ytd(); const opSeries=f.map((x,i)=>({label:(i+1)+'月',v:Math.max(x.op,0)}));
+  const f=STORE.finance||[]; const y=ytd(); const opSeries=f.map((x,i)=>({label:(i+1)+'月',v:Math.max(monthOp(i),0)}));
   const detailMonth=f.findIndex(x=>x.sgaItems&&x.sgaItems.length);
   c.innerHTML=`
     <div class="grid kpis">
@@ -533,7 +528,7 @@ function renderFinance(c,p){
       </div></div><div style="height:16px"></div>
     <div class="card"><h3>損益計算書（月次）</h3><table>
     <thead><tr><th>月</th><th class="num">売上高</th><th class="num">売上原価</th><th class="num">売上総利益</th><th class="num">販管費</th><th class="num">営業利益</th></tr></thead>
-    <tbody>${f.map((x,i)=>`<tr><td>${months[i]}</td><td class="num">${yen(x.revenue)}</td><td class="num">${yen(x.cogs)}</td><td class="num">${yen(x.revenue-x.cogs)}</td><td class="num">${yen(x.sga)}</td><td class="num ${x.op>=0?'up':'down'}"><b>${yen(x.op)}</b></td></tr>`).join('')}
+    <tbody>${f.map((x,i)=>`<tr><td>${months[i]}</td><td class="num">${yen(salesTotal(i))}</td><td class="num">${yen(x.cogs)}</td><td class="num">${yen(salesTotal(i)-x.cogs)}</td><td class="num">${yen(x.sga)}</td><td class="num ${monthOp(i)>=0?'up':'down'}"><b>${yen(monthOp(i))}</b></td></tr>`).join('')}
     <tr style="border-top:2px solid var(--line)"><td><b>合計</b></td><td class="num"><b>${yen(y.rev)}</b></td><td class="num"><b>${yen(y.cogs)}</b></td><td class="num"><b>${yen(y.rev-y.cogs)}</b></td><td class="num"><b>${yen(y.sga)}</b></td><td class="num"><b>${yen(y.op)}</b></td></tr>
     </tbody></table></div>
     ${detailMonth>=0?`<div style="height:16px"></div><div class="card"><h3>販管費の内訳 <span class="pill info">${months[detailMonth]}（試算表取込）</span></h3>
@@ -669,15 +664,12 @@ async function del(coll,id){
 }
 
 function editBusiness(id){
-  const x=(STORE.businesses||[]).find(z=>z.id===id)||{name:'',lead:'',status:'新規',target:0,actual:0,members:0,gmRate:0,salesKey:''};
-  const skLabels={'':'（紐付けなし）',saas:'SaaS列',juchu:'受託列',consul:'コンサル列'};
-  const skCur=skLabels[x.salesKey||''];
+  const x=(STORE.businesses||[]).find(z=>z.id===id)||{name:'',lead:'',status:'新規',target:0,actual:0,members:0,gmRate:0};
   openModal(id?'事業を編集':'事業を追加',`${field('事業名','f_name',x.name)}${field('責任者','f_lead',x.lead)}${selField('ステータス','f_status',x.status,['成長','安定','新規','縮小'])}
     <div class="field two"><label>目標 / 実績 売上(円)</label><input id="f_target" type="number" value="${x.target}"><input id="f_actual" type="number" value="${x.actual}"></div>
     <div class="field two"><label>人員(名) / 粗利率(%)</label><input id="f_members" type="number" value="${x.members}"><input id="f_gm" type="number" value="${x.gmRate}"></div>
-    ${selField('売上データの列（事業別売上の閲覧制限に使用）','f_sk',skCur,Object.values(skLabels))}`,
-    ()=>{const skMap={'（紐付けなし）':'','SaaS列':'saas','受託列':'juchu','コンサル列':'consul'};
-      return upsert('businesses',{id:id||b(),name:fv('f_name'),lead:fv('f_lead'),status:fv('f_status'),target:fnum('f_target'),actual:fnum('f_actual'),members:fnum('f_members'),gmRate:fnum('f_gm'),salesKey:skMap[fv('f_sk')]||''},id);});
+    <p class="muted" style="font-size:11px;margin:-4px 0 0">※ 事業を追加すると、売上管理に自動で列が追加されます。所属事業を設定したメンバーは、その事業の売上のみ閲覧できます。</p>`,
+    ()=>upsert('businesses',{id:id||b(),name:fv('f_name'),lead:fv('f_lead'),status:fv('f_status'),target:fnum('f_target'),actual:fnum('f_actual'),members:fnum('f_members'),gmRate:fnum('f_gm')},id));
 }
 function editTask(id){
   const x=(STORE.tasks||[]).find(t=>t.id===id)||{title:'',assignee:'',due:todayISO(),priority:'中',status:'未着手',biz:'全社'};
@@ -706,16 +698,17 @@ function editCost(){
     async()=>{ STORE.cost={...x,fixedMonthly:fnum('f_fixed'),variableRate:Math.min(Math.max(fnum('f_var'),0),0.99)}; await persist('cost'); closeModal(); render(); });
 }
 function editSales(){
-  const s=STORE.sales||[];
-  openModal('月次売上の編集（事業別・円）',`<p class="muted" style="font-size:12px;margin-top:0">SaaS / 受託 / コンサルを入力。合計は自動計算。</p>`+
-    s.map((x,i)=>`<div class="field"><label>${months[i]}（SaaS / 受託 / コンサル）</label><div style="display:flex;gap:8px"><input id="s_${i}_a" type="number" value="${x.saas}"><input id="s_${i}_b" type="number" value="${x.juchu}"><input id="s_${i}_c" type="number" value="${x.consul}"></div></div>`).join(''),
-    async()=>{ STORE.sales=s.map((x,i)=>{const a=fnum('s_'+i+'_a'),bb=fnum('s_'+i+'_b'),cc=fnum('s_'+i+'_c');return {month:i,saas:a,juchu:bb,consul:cc,total:a+bb+cc};}); await persist('sales'); closeModal(); render(); });
+  const s=STORE.sales||[]; const cols=salesCols();
+  if(!cols.length){ alert('先に「事業管理」で事業を登録してください'); return; }
+  openModal('月次売上の編集（事業別・円）',`<p class="muted" style="font-size:12px;margin-top:0">各事業の月次売上を入力。合計は自動計算されます。（${cols.map(c=>c.label).join(' / ')}）</p>`+
+    s.map((x,i)=>`<div class="field"><label>${months[i]}</label><div style="display:flex;gap:8px;flex-wrap:wrap">${cols.map(c=>`<input id="s_${i}_${c.key}" type="number" value="${x[c.key]||0}" title="${c.label}" placeholder="${c.label}" style="flex:1;min-width:100px">`).join('')}</div></div>`).join(''),
+    async()=>{ STORE.sales=s.map((x,i)=>{const row={month:i,total:0}; cols.forEach(c=>{const v=fnum('s_'+i+'_'+c.key); row[c.key]=v; row.total+=v;}); return row;}); await persist('sales'); closeModal(); render(); });
 }
 function editFinance(){
   const f=STORE.finance||[];
-  openModal('月次PLの編集（円）',`<p class="muted" style="font-size:12px;margin-top:0">売上 / 原価 / 販管費を入力。営業利益は自動計算。</p>`+
-    f.map((x,i)=>`<div class="field"><label>${months[i]}（売上 / 原価 / 販管費）</label><div style="display:flex;gap:8px"><input id="g_${i}_r" type="number" value="${x.revenue}"><input id="g_${i}_c" type="number" value="${x.cogs}"><input id="g_${i}_s" type="number" value="${x.sga}"></div></div>`).join(''),
-    async()=>{ STORE.finance=f.map((x,i)=>{const r=fnum('g_'+i+'_r'),co=fnum('g_'+i+'_c'),sg=fnum('g_'+i+'_s');return {month:i,revenue:r,cogs:co,sga:sg,op:r-co-sg};}); await persist('finance'); closeModal(); render(); });
+  openModal('月次PLの編集（円）',`<p class="muted" style="font-size:12px;margin-top:0">原価・販管費を入力してください。<b>売上は「売上管理」の合計が自動で入ります</b>（ここでは編集しません）。営業利益＝売上−原価−販管費。</p>`+
+    f.map((x,i)=>`<div class="field"><label>${months[i]}　売上 ${yen(salesTotal(i))}（自動）</label><div style="display:flex;gap:8px"><input id="g_${i}_c" type="number" value="${x.cogs||0}" placeholder="売上原価" title="売上原価"><input id="g_${i}_s" type="number" value="${x.sga||0}" placeholder="販管費" title="販管費"></div></div>`).join(''),
+    async()=>{ STORE.finance=f.map((x,i)=>{const co=fnum('g_'+i+'_c'),sg=fnum('g_'+i+'_s');return Object.assign({},x,{month:i,cogs:co,sga:sg});}); await persist('finance'); closeModal(); render(); });
 }
 
 // ---- 試算表(PDF)の取り込み：貼り付けたテキストから自動抽出 ----
@@ -762,10 +755,10 @@ function importTrialBalance(){
     async()=>{
       if(!window._tbParsed){ alert('先に「読み取る」を押して内容を確認してください'); throw new Error('未読み取り'); }
       const i=Number(fv('tb_month'));
-      const rev=fnum('tb_rev'), co=fnum('tb_cogs'), sg=fnum('tb_sga');
+      const co=fnum('tb_cogs'), sg=fnum('tb_sga');
       const f=STORE.finance||[];
       const items=(window._tbParsed.sgaItems||[]);
-      f[i]={month:i,revenue:rev,cogs:co,sga:sg,op:rev-co-sg, sgaItems:items};
+      f[i]=Object.assign({},f[i]||{},{month:i,cogs:co,sga:sg,sgaItems:items});
       STORE.finance=f; await persist('finance'); window._tbParsed=null; closeModal(); render();
     });
 }
@@ -797,8 +790,8 @@ function runTBParse(){
   const r=parseTrialBalance(fv('tb_text')); window._tbParsed=r;
   document.getElementById('tb_result').innerHTML=`
     <div class="alert ${(r.revenue||r.cogs||r.sga)?'ok':'warn'}">${(r.revenue||r.cogs||r.sga)?'読み取りました。金額を確認・修正して「保存」を押してください。':'うまく読み取れませんでした。下の欄に手入力でも保存できます。'}</div>
-    <div class="field two"><label>売上高 / 売上原価</label><input id="tb_rev" type="number" value="${r.revenue||0}"><input id="tb_cogs" type="number" value="${r.cogs||0}"></div>
-    <div class="field"><label>販管費 合計</label><input id="tb_sga" type="number" value="${r.sga||0}"></div>
+    <div class="field two"><label>売上高（参考・反映されません ※売上は売上管理から） / 売上原価（反映）</label><input id="tb_rev" type="number" value="${r.revenue||0}" disabled style="opacity:.5"><input id="tb_cogs" type="number" value="${r.cogs||0}"></div>
+    <div class="field"><label>販管費 合計（反映）</label><input id="tb_sga" type="number" value="${r.sga||0}"></div>
     ${r.sgaItems&&r.sgaItems.length?`<div class="field"><label>販管費の内訳（${r.sgaItems.length}件を検出）</label>
       <div style="max-height:140px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:8px">
       ${r.sgaItems.map(it=>`<div class="stat-line"><span>${it.name}</span><b>${yen(it.amount)}</b></div>`).join('')}</div></div>`:''}`;

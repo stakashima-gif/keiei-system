@@ -102,7 +102,16 @@
   .muted{color:var(--muted)}
   .empty{text-align:center;color:var(--muted);padding:40px}
   .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
-  .toolbar select{background:var(--panel);border:1px solid var(--line);color:var(--txt);padding:7px 11px;border-radius:8px;font-size:13px;font-family:inherit}
+  .toolbar select,.toolbar input{background:var(--panel);border:1px solid var(--line);color:var(--txt);padding:7px 11px;border-radius:8px;font-size:13px;font-family:inherit}
+  .chip{background:var(--panel2);border:1px solid var(--line);color:var(--muted);padding:6px 12px;border-radius:20px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit}
+  .chip:hover{color:var(--txt)}
+  .chip.active{background:rgba(79,140,255,.18);color:#8fb4ff;border-color:rgba(79,140,255,.5)}
+  .scorebar{width:52px;height:6px;border-radius:4px;background:var(--panel2);overflow:hidden;display:inline-block;vertical-align:middle}
+  .scorebar>i{display:block;height:100%;border-radius:4px}
+  .slider-row{display:grid;grid-template-columns:118px 1fr 22px;gap:10px;align-items:center;margin-bottom:9px}
+  .slider-row label{margin:0;font-size:12.5px;color:var(--txt)}
+  .slider-row input[type=range]{width:100%}
+  .slider-row b{text-align:right;font-variant-numeric:tabular-nums}
   /* ログイン画面 */
   .login-wrap{min-height:100vh;display:grid;place-items:center;padding:20px}
   .login-card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:34px;width:100%;max-width:380px;box-shadow:var(--shadow)}
@@ -175,13 +184,14 @@ const PAGES = [
   {id:'business', icon:'🏢', name:'事業管理', title:'事業管理', sub:'事業セグメント別の進捗と採算', sect:'事業・収益'},
   {id:'sales', icon:'💹', name:'売上管理', title:'売上管理', sub:'月次・事業別の売上推移', sect:'事業・収益'},
   {id:'finance', icon:'💰', name:'財務管理', title:'財務管理', sub:'損益計算書（PL）と資金状況', sect:'事業・収益'},
+  {id:'cashflow', icon:'🏦', name:'資金繰り', title:'資金繰り表', sub:'GMOあおぞらネット銀行の入出金明細から自動集計', sect:'事業・収益'},
   {id:'tasks', icon:'✅', name:'タスク管理', title:'タスク管理', sub:'全社のタスク進捗と期限管理', sect:'業務'},
   {id:'contracts', icon:'📄', name:'契約管理', title:'契約管理', sub:'契約状況と更新期限のアラート', sect:'業務'},
   {id:'people', icon:'👥', name:'人材管理', title:'人材状況', sub:'人員構成・人件費・評価', sect:'業務'},
-  {id:'recruits', icon:'🧑‍💼', name:'採用管理', title:'採用管理', sub:'候補者・募集ポジション・選考状況の管理', sect:'業務'},
+  {id:'recruits', icon:'🧑‍💼', name:'採用管理', title:'採用管理', sub:'求職者管理・5項目スコア評価・Airワーク連携', sect:'業務'},
   {id:'tools', icon:'🔗', name:'ツール', title:'ツール一元管理', sub:'よく使うツールへのリンク集', sect:'ツール'},
 ];
-const PAGE_WRITE={business:['businesses'],sales:['sales'],finance:['finance'],breakeven:['cost'],tasks:['tasks'],contracts:['contracts'],people:['people'],tools:['tools'],recruits:['recruits'],dashboard:[],analysis:[]};
+const PAGE_WRITE={business:['businesses'],sales:['sales'],finance:['finance'],breakeven:['cost'],tasks:['tasks'],contracts:['contracts'],people:['people'],tools:['tools'],recruits:['recruits'],cashflow:['cashflow'],dashboard:[],analysis:[]};
 const PAGE_NAME=Object.fromEntries(PAGES.map(p=>[p.id,p.name]));
 
 //==================================================================
@@ -345,7 +355,7 @@ function render(){
   markNav();
   const c=document.getElementById('content');
   const map={dashboard:renderDashboard,analysis:renderAnalysis,breakeven:renderBreakeven,business:renderBusiness,tools:renderTools,recruits:renderRecruits,
-    sales:renderSales,finance:renderFinance,tasks:renderTasks,contracts:renderContracts,people:renderPeople,users:renderUsers};
+    sales:renderSales,finance:renderFinance,cashflow:renderCashflow,tasks:renderTasks,contracts:renderContracts,people:renderPeople,users:renderUsers};
   const p=PAGES.find(x=>x.id===current);
   (map[current]||(()=>{c.innerHTML='<div class="empty">ページがありません</div>'}))(c,p);
 }
@@ -538,6 +548,105 @@ function renderFinance(c,p){
       </tbody></table></div>`:''}`;
 }
 
+// ---- 資金繰り（GMOあおぞらネット銀行 連携）----
+let cfFrom=null, cfTo=null;
+function cfDefaultRange(){
+  const n=new Date();
+  const to=`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`;
+  const f=new Date(n.getFullYear(), n.getMonth()-5, 1);
+  const from=`${f.getFullYear()}-${String(f.getMonth()+1).padStart(2,'0')}`;
+  return {from,to};
+}
+function jpMonth(m){ const [y,mo]=m.split('-'); return `${y}年${parseInt(mo)}月`; }
+function escapeHtml(s){ return String(s).replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch])); }
+function cfReload(){ const f=document.getElementById('cf-from'),t=document.getElementById('cf-to'); if(f)cfFrom=f.value; if(t)cfTo=t.value; render(); }
+async function cfEditOpening(){
+  const cur=(STORE.cashflow&&STORE.cashflow.opening_balance)||3000000;
+  const v=prompt('集計開始月の「前月繰越残高」を入力してください（円）', cur);
+  if(v===null) return;
+  const n=parseInt(String(v).replace(/[^0-9-]/g,''))||0;
+  STORE.cashflow={...(STORE.cashflow||{}), opening_balance:n};
+  try{ await persist('cashflow'); }catch(e){ alert(e.message); return; }
+  render();
+}
+// 残高推移の折れ線（SVG・自前）
+function lineChart(points){
+  const w=Math.max(points.length*92,320), h=190, pad=30;
+  const vs=points.map(p=>p.v), min=Math.min(...vs,0), max=Math.max(...vs,1), span=(max-min)||1;
+  const X=i=>pad+i*((w-pad*2)/Math.max(points.length-1,1));
+  const Y=v=>h-pad-((v-min)/span)*(h-pad*2);
+  const line=points.map((p,i)=>`${i?'L':'M'}${X(i).toFixed(1)},${Y(p.v).toFixed(1)}`).join(' ');
+  const area=`${line} L${X(points.length-1).toFixed(1)},${(h-pad).toFixed(1)} L${X(0).toFixed(1)},${(h-pad).toFixed(1)} Z`;
+  const dots=points.map((p,i)=>`<circle cx="${X(i).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="3.5" fill="#4f8cff"><title>${p.label}: ${yen(p.v)}</title></circle>`).join('');
+  const labels=points.map((p,i)=>`<text x="${X(i).toFixed(1)}" y="${h-8}" text-anchor="middle" fill="#9aa3b2" font-size="10">${p.label}</text>`).join('');
+  const zero=(min<0&&max>0)?`<line x1="${pad}" y1="${Y(0).toFixed(1)}" x2="${w-pad}" y2="${Y(0).toFixed(1)}" stroke="#3a4152" stroke-dasharray="3 3"/>`:'';
+  return `<div style="overflow-x:auto"><svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+    <path d="${area}" fill="rgba(79,140,255,.12)"/>${zero}
+    <path d="${line}" fill="none" stroke="#4f8cff" stroke-width="2"/>${dots}${labels}</svg></div>`;
+}
+async function renderCashflow(c,p){
+  const ed=canEdit('cashflow');
+  const r0=cfDefaultRange(); if(!cfFrom)cfFrom=r0.from; if(!cfTo)cfTo=r0.to;
+  setHeader(p.title,p.sub,
+    `<input type="month" id="cf-from" value="${cfFrom}" style="margin-right:6px">
+     <input type="month" id="cf-to" value="${cfTo}" style="margin-right:6px">
+     <button class="btn" onclick="cfReload()">更新</button>`
+    + (ed?` <button class="btn ghost" onclick="cfEditOpening()">✏ 開始残高</button>`:roBadge()));
+  c.innerHTML=`<div class="empty">読み込み中…</div>`;
+  let d;
+  try{ d=await api('GET',`/api/cashflow?from=${cfFrom}&to=${cfTo}`); }
+  catch(e){ c.innerHTML=`<div class="alert bad">${e.message}</div>`; return; }
+  const rows=d.cashflow||[]; if(!rows.length){ c.innerHTML='<div class="empty">対象期間のデータがありません</div>'; return; }
+  const last=rows[rows.length-1], first=rows[0];
+  const opNet=rows.reduce((a,r)=>a+r.operating_net,0), finNet=rows.reduce((a,r)=>a+r.finance_net,0);
+  // データ元バッジ
+  const s=d.source, srcName={mock:'サンプルデータ','mock(fallback)':'サンプル（実データ取得失敗）',sunabar:'sunabar 実データ',production:'本番API 実データ'}[s.source]||s.source;
+  const srcPill=`<span class="pill ${s.source.startsWith('mock')?'warn':'info'}">🏦 データ元: ${srcName}（${s.count}件）</span>`;
+  const errBanner=s.error?`<div class="alert bad" style="margin-bottom:14px">⚠ ${s.error}<br><span class="muted">環境変数 GMO_ACCESS_TOKEN / GMO_MODE を確認してください。</span></div>`:'';
+  // 資金繰り表
+  const cell=v=>`<td class="num ${v<0?'down':''}">${yen(v)}</td>`;
+  const catRow=(key,label)=>`<tr><td style="padding-left:22px" class="muted">${label}</td>${rows.map(r=>cell(r.categories[key])).join('')}</tr>`;
+  const secTop='style="border-top:2px solid var(--line)"';
+  const table=`<table>
+    <thead><tr><th>科目</th>${rows.map(r=>`<th class="num">${jpMonth(r.month)}</th>`).join('')}</tr></thead>
+    <tbody>
+    <tr><td><b>前月繰越</b></td>${rows.map(r=>cell(r.opening)).join('')}</tr>
+    <tr><td><b>営業収入</b></td>${rows.map(r=>cell(r.operating_in)).join('')}</tr>
+    ${catRow('sales','売上入金')}${catRow('other_in','その他営業収入')}
+    <tr><td><b>営業支出</b></td>${rows.map(r=>cell(r.operating_out)).join('')}</tr>
+    ${catRow('purchase','仕入・外注')}${catRow('payroll','人件費')}${catRow('tax','税金・社会保険')}${catRow('expense','経費・その他')}
+    <tr ${secTop}><td><b>営業収支過不足</b></td>${rows.map(r=>cell(r.operating_net)).join('')}</tr>
+    ${catRow('finance_in','財務収入（借入）')}${catRow('finance_out','財務支出（返済）')}
+    <tr><td><b>財務収支</b></td>${rows.map(r=>cell(r.finance_net)).join('')}</tr>
+    <tr ${secTop}><td><b>当月収支</b></td>${rows.map(r=>cell(r.month_net)).join('')}</tr>
+    <tr ${secTop}><td><b>翌月繰越（月末残高）</b></td>${rows.map(r=>`<td class="num ${r.closing<0?'down':'up'}"><b>${yen(r.closing)}</b></td>`).join('')}</tr>
+    </tbody></table>`;
+  // 月別内訳
+  const dbm=d.detail_by_month||{};
+  const details=Object.keys(dbm).sort().filter(m=>dbm[m].length).map(m=>{
+    const list=dbm[m].map(t=>{const col=t.direction==='in'?'up':'down';const sg=t.direction==='in'?'＋':'−';
+      return `<tr><td>${t.date}</td><td>${escapeHtml(t.remarks)}</td><td><span class="pill">${t.category_label}</span></td><td class="num ${col}">${sg}${yen(t.amount)}</td></tr>`;}).join('');
+    return `<details style="margin-top:8px"><summary style="cursor:pointer;color:var(--accent,#4f8cff);font-weight:600">${jpMonth(m)} の入出金内訳（${dbm[m].length}件）</summary>
+      <table style="margin-top:8px"><thead><tr><th>日付</th><th>摘要</th><th>分類</th><th class="num">金額</th></tr></thead><tbody>${list}</tbody></table></details>`;
+  }).join('');
+  c.innerHTML=`
+    ${errBanner}
+    <div style="margin-bottom:12px">${srcPill} <span class="muted" style="margin-left:8px">開始残高 ${yen(d.opening_balance)}（${jpMonth(first.month)}の前月繰越）</span></div>
+    <div class="grid kpis">
+      ${kpi('最新月末の残高見込み','🏦',yen(last.closing),`<span class="muted">${jpMonth(last.month)} 時点</span>`)}
+      ${kpi('当月の収支','📉',yen(last.month_net),`<span class="${last.month_net>=0?'up':'down'}">${last.month_net>=0?'黒字':'赤字'}</span>`)}
+      ${kpi('営業収支 合計','💹',yen(opNet),`<span class="muted">${jpMonth(first.month)}〜${jpMonth(last.month)}</span>`)}
+      ${kpi('財務収支 合計','🏛️',yen(finNet),'<span class="muted">借入 − 返済</span>')}
+    </div><div style="height:16px"></div>
+    <div class="two-col">
+      <div class="card"><h3>資金残高の推移（月末繰越）</h3>${lineChart(rows.map(r=>({label:jpMonth(r.month).replace('年','/').replace('月',''),v:r.closing})))}</div>
+      <div class="card"><h3>月次収支（営業＋財務）</h3>${barChart(rows.map(r=>({label:jpMonth(r.month).replace(/^\d+年/,''),v:r.month_net})),{fmt:yen})}</div>
+    </div><div style="height:16px"></div>
+    <div class="card"><h3>資金繰り表</h3><div style="overflow-x:auto">${table}</div>
+      <div class="muted" style="margin-top:8px;font-size:12px">※ 摘要のキーワードで自動分類しています。分類は各月の内訳で確認できます。</div>
+      ${details}</div>`;
+}
+
 // ---- タスク管理 ----
 let taskFilter='all';
 function renderTasks(c,p){
@@ -641,6 +750,7 @@ let modalSave=null;
 function openModal(title, html, onSave){
   document.getElementById('modal-title').textContent=title;
   document.getElementById('modal-body').innerHTML=html;
+  const sv=document.getElementById('modal-save'); sv.textContent='保存'; sv.style.display=''; // 毎回リセット
   modalSave=onSave;
   document.getElementById('modal-bg').classList.add('show');
 }
@@ -653,14 +763,18 @@ function field(label,id,val,type='text'){ return `<div class="field"><label>${la
 function selField(label,id,val,opts){ return `<div class="field"><label>${label}</label><select id="${id}">${opts.map(o=>`<option${o===val?' selected':''}>${o}</option>`).join('')}</select></div>`; }
 
 async function upsert(coll,obj,id){
-  if(id){ const i=STORE[coll].findIndex(x=>x.id===id); STORE[coll][i]=obj; }
-  else { STORE[coll]=STORE[coll]||[]; STORE[coll].push(obj); }
-  await persist(coll); closeModal(); render();
+  // サーバーに「1件だけ」送る（他の項目・他タブのデータを上書きしない）
+  const r=await api('POST','/api/store/'+coll+'/item',{value:obj}); REV=r.rev;
+  STORE[coll]=STORE[coll]||[];
+  const i=STORE[coll].findIndex(x=>x.id===obj.id);
+  if(i>=0) STORE[coll][i]=obj; else STORE[coll].push(obj);
+  closeModal(); render();
 }
 async function del(coll,id){
   if(!confirm('削除しますか?')) return;
-  const backup=STORE[coll]; STORE[coll]=STORE[coll].filter(x=>x.id!==id);
-  try{ await persist(coll); render(); }catch(e){ STORE[coll]=backup; alert(e.message); }
+  try{ const r=await api('DELETE','/api/store/'+coll+'/item/'+id); REV=r.rev;
+    STORE[coll]=(STORE[coll]||[]).filter(x=>x.id!==id); render();
+  }catch(e){ alert(e.message); }
 }
 
 function editBusiness(id){
@@ -822,41 +936,248 @@ function editTool(id){
     ()=>upsert('tools',{id:id||b(),name:fv('t_name'),url:fv('t_url'),category:fv('t_cat')||'その他',icon:fv('t_icon')||'🔗'},id));
 }
 
-// ---- 採用管理 ----
+// ---- 採用管理（求職者管理・5項目スコア評価・Airワーク連携） ----
 const RECRUIT_STAGES=['応募','書類選考','面接','内定','入社','見送り'];
-function renderRecruits(c,p){
+const RECRUIT_SOURCES=['Airワーク','Indeed','リファラル','求人媒体','エージェント','直接応募','SNS','その他'];
+// 求職者を数値評価する5項目
+const SCORE_AXES=[
+  {key:'skill',         label:'スキル',            color:'#4f8cff'},
+  {key:'experience',    label:'経験',              color:'#06b6d4'},
+  {key:'motivation',    label:'意欲',              color:'#22c55e'},
+  {key:'culture',       label:'カルチャー適性',    color:'#f59e0b'},
+  {key:'communication', label:'コミュニケーション',color:'#a78bfa'},
+];
+let recFilter={q:'',source:'all',stage:'all',sort:'score'};
+
+function recHasScore(r){ return r.scores && SCORE_AXES.some(a=>Number(r.scores[a.key])>0); }
+function recAvg(r){ if(!recHasScore(r)) return null; return SCORE_AXES.reduce((s,a)=>s+Number((r.scores||{})[a.key]||0),0)/SCORE_AXES.length; }
+function recTotal(r){ return SCORE_AXES.reduce((s,a)=>s+Number((r.scores||{})[a.key]||0),0); }
+function scoreColor(avg){ return avg>=4?'#4ade80':avg>=3?'#fbbf24':'#f87171'; }
+function stagePillCls(st){ return st==='入社'?'ok':st==='内定'?'info':st==='見送り'?'bad':st==='面接'?'warn':'muted'; }
+
+// レーダーチャート（5軸・ダークテーマ）
+function radarSVG(scores,size=210,max=5){
+  const cx=size/2, cy=size/2, r=size/2-38, n=SCORE_AXES.length;
+  const ang=i=>Math.PI*2*i/n - Math.PI/2;
+  const pt=(i,v)=>[cx+r*(v/max)*Math.cos(ang(i)), cy+r*(v/max)*Math.sin(ang(i))];
+  let g='';
+  [1,2,3,4,5].forEach(lv=>{ g+=`<polygon points="${SCORE_AXES.map((a,i)=>pt(i,lv).join(',')).join(' ')}" fill="none" stroke="#2a2f3a" stroke-width="1"/>`; });
+  SCORE_AXES.forEach((a,i)=>{ const[x,y]=pt(i,max); g+=`<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#2a2f3a"/>`; });
+  const dp=SCORE_AXES.map((a,i)=>pt(i,Number(scores[a.key]||0)));
+  g+=`<polygon points="${dp.map(p=>p.join(',')).join(' ')}" fill="rgba(79,140,255,.22)" stroke="#4f8cff" stroke-width="2" stroke-linejoin="round"/>`;
+  dp.forEach(p=>{ g+=`<circle cx="${p[0]}" cy="${p[1]}" r="3.2" fill="#4f8cff"/>`; });
+  SCORE_AXES.forEach((a,i)=>{ const lr=r+20; const x=cx+lr*Math.cos(ang(i)), y=cy+lr*Math.sin(ang(i));
+    const anchor=Math.abs(x-cx)<10?'middle':(x>cx?'start':'end'); const lbl=a.label.length>6?a.label.slice(0,5)+'…':a.label;
+    g+=`<text x="${x}" y="${y}" font-size="10" fill="#9aa3b2" text-anchor="${anchor}" dominant-baseline="middle">${lbl}</text>`; });
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="overflow:visible">${g}</svg>`;
+}
+
+function recRender(){
   const ed=canEdit('recruits');
-  setHeader(p.title,p.sub, ed?`<button class="btn" onclick="editRecruit()">＋ 候補者を追加</button>`:roBadge());
+  setHeader('採用管理','求職者管理・5項目スコア評価・Airワーク連携',
+    ed?`<button class="btn ghost sm" onclick="recruitIntegration()">🔗 Airワーク/CSV</button><button class="btn" onclick="editRecruit()">＋ 候補者を追加</button>`
+      :`<button class="btn ghost sm" onclick="recruitIntegration()">🔗 CSV書き出し</button>${roBadge()}`);
   const rs=STORE.recruits||[];
   const cnt=s=>rs.filter(r=>r.stage===s).length;
   const active=rs.filter(r=>!['入社','見送り'].includes(r.stage)).length;
+  const scored=rs.filter(recHasScore);
+  const avgAll=scored.length?scored.reduce((s,r)=>s+recAvg(r),0)/scored.length:0;
+  const axisAvg=SCORE_AXES.map(a=>({...a, v: scored.length?scored.reduce((s,r)=>s+Number(r.scores[a.key]||0),0)/scored.length:0}));
+  const maxF=rs.length||1;
+  const c=document.getElementById('content');
   c.innerHTML=`
     <div class="grid kpis">
-      ${kpi('候補者数','🧑‍💼',rs.length,'')}${kpi('選考中','🔄',active,'')}
-      ${kpi('内定','🎉',cnt('内定'),'')}${kpi('入社','✅',cnt('入社'),'')}
+      ${kpi('求職者数','🧑‍💼',rs.length,'')}${kpi('選考中','🔄',active,'')}
+      ${kpi('内定','🎉',cnt('内定'),'')}${kpi('平均スコア','⭐',avgAll?avgAll.toFixed(1):'—','<span class="muted">/ 5</span>')}
     </div><div style="height:16px"></div>
-    <div class="card"><h3>選考ファネル</h3>
-      ${['応募','書類選考','面接','内定','入社'].map(st=>{const n=cnt(st);const max=rs.length||1;return `
-        <div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>${st}</span><b>${n}名</b></div>
-        <div class="progress"><i style="width:${n/max*100}%"></i></div></div>`;}).join('')}
+    <div class="two-col">
+      <div class="card"><h3>選考ファネル</h3>
+        ${['応募','書類選考','面接','内定','入社'].map(st=>{const n=cnt(st);return `
+          <div style="margin-bottom:11px"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>${st}</span><b>${n}名</b></div>
+          <div class="progress"><i style="width:${n/maxF*100}%"></i></div></div>`;}).join('')}
+      </div>
+      <div class="card"><h3>評価項目 平均<span class="muted" style="font-weight:400;font-size:11px">対象 ${scored.length}名</span></h3>
+        ${axisAvg.map(a=>`<div style="margin-bottom:11px"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>${a.label}</span><b style="color:${a.color}">${a.v.toFixed(1)}</b></div>
+          <div class="progress"><i style="width:${a.v/5*100}%;background:${a.color}"></i></div></div>`).join('')}
+      </div>
     </div><div style="height:16px"></div>
-    <div class="card"><table>
-    <thead><tr><th>候補者</th><th>募集ポジション</th><th>選考状況</th><th>流入経路</th><th>応募日</th><th>メモ</th>${ed?'<th></th>':''}</tr></thead>
-    <tbody>${rs.slice().sort((a,b)=>RECRUIT_STAGES.indexOf(a.stage)-RECRUIT_STAGES.indexOf(b.stage)).map(r=>`<tr>
-      <td><b>${r.name}</b></td><td>${r.position}</td>
-      <td><span class="pill ${r.stage==='入社'?'ok':r.stage==='内定'?'info':r.stage==='見送り'?'bad':'muted'}">${r.stage}</span></td>
-      <td><span class="muted">${r.source||'—'}</span></td><td>${fmtDate(r.applied)}</td><td class="muted" style="font-size:12px">${r.note||''}</td>
-      ${ed?`<td class="row-actions"><button class="icon-btn" onclick="editRecruit('${r.id}')">✏️</button><button class="icon-btn" onclick="del('recruits','${r.id}')">🗑</button></td>`:''}
-    </tr>`).join('')||`<tr><td colspan="${ed?7:6}"><div class="empty">候補者がいません</div></td></tr>`}</tbody></table></div>`;
+    <div class="toolbar">
+      <input id="rec-q" placeholder="🔍 氏名・ポジションで検索" value="${escapeHtml(recFilter.q)}" oninput="recFilter.q=this.value;recFillRows()" style="flex:1;min-width:200px">
+      <select id="rec-src" onchange="recFilter.source=this.value;recFillRows()">
+        <option value="all"${recFilter.source==='all'?' selected':''}>流入経路: すべて</option>
+        ${RECRUIT_SOURCES.map(s=>`<option value="${s}"${recFilter.source===s?' selected':''}>${s}</option>`).join('')}
+      </select>
+      <select id="rec-sort" onchange="recFilter.sort=this.value;recFillRows()">
+        <option value="score"${recFilter.sort==='score'?' selected':''}>並び順: スコア高い順</option>
+        <option value="date"${recFilter.sort==='date'?' selected':''}>並び順: 応募日が新しい順</option>
+        <option value="name"${recFilter.sort==='name'?' selected':''}>並び順: 氏名（五十音）</option>
+        <option value="stage"${recFilter.sort==='stage'?' selected':''}>並び順: 選考ステージ</option>
+      </select>
+    </div>
+    <div class="toolbar" id="rec-chips">
+      <button class="chip rec-chip${recFilter.stage==='all'?' active':''}" data-st="all" onclick="recSetStage('all')">すべて</button>
+      ${RECRUIT_STAGES.map(st=>`<button class="chip rec-chip${recFilter.stage===st?' active':''}" data-st="${st}" onclick="recSetStage('${st}')">${st}</button>`).join('')}
+    </div>
+    <div class="card" style="padding:0;overflow:hidden"><table>
+      <thead><tr><th>候補者</th><th>ポジション</th><th>流入経路</th><th>応募日</th><th>選考状況</th><th>スコア(平均)</th>${ed?'<th></th>':''}</tr></thead>
+      <tbody id="rec-tbody"></tbody></table></div>`;
+  recFillRows();
 }
+
+function recFilteredList(){
+  let list=(STORE.recruits||[]).filter(r=>{
+    if(recFilter.stage!=='all' && r.stage!==recFilter.stage) return false;
+    if(recFilter.source!=='all' && (r.source||'')!==recFilter.source) return false;
+    if(recFilter.q){ const s=((r.name||'')+(r.kana||'')+(r.position||'')+(r.source||'')).toLowerCase(); if(!s.includes(recFilter.q.toLowerCase())) return false; }
+    return true;
+  });
+  if(recFilter.sort==='score') list.sort((a,b)=>recTotal(b)-recTotal(a));
+  else if(recFilter.sort==='date') list.sort((a,b)=>(b.applied||'').localeCompare(a.applied||''));
+  else if(recFilter.sort==='name') list.sort((a,b)=>((a.kana||a.name||'')).localeCompare(b.kana||b.name||'','ja'));
+  else if(recFilter.sort==='stage') list.sort((a,b)=>RECRUIT_STAGES.indexOf(a.stage)-RECRUIT_STAGES.indexOf(b.stage));
+  return list;
+}
+function recSetStage(st){ recFilter.stage=st; document.querySelectorAll('.rec-chip').forEach(el=>el.classList.toggle('active', el.dataset.st===st)); recFillRows(); }
+function recFillRows(){
+  const ed=canEdit('recruits'); const list=recFilteredList(); const tb=document.getElementById('rec-tbody'); if(!tb) return;
+  tb.innerHTML=list.map(r=>{
+    const avg=recAvg(r);
+    const scoreCell=avg==null?`<span class="muted" style="font-size:12px">未評価</span>`
+      :`<span class="scorebar"><i style="width:${avg/5*100}%;background:${scoreColor(avg)}"></i></span> <b style="color:${scoreColor(avg)}">${avg.toFixed(1)}</b>`;
+    const srcCell=(r.source==='Airワーク')?`<span class="pill" style="background:rgba(245,158,11,.15);color:#fbbf24">Airワーク</span>`:`<span class="muted">${r.source||'—'}</span>`;
+    return `<tr style="cursor:pointer" onclick="showRecruit('${r.id}')">
+      <td><b>${escapeHtml(r.name||'')}</b>${r.kana?`<div class="muted" style="font-size:11px">${escapeHtml(r.kana)}</div>`:''}</td>
+      <td>${escapeHtml(r.position||'')}</td><td>${srcCell}</td><td>${fmtDate(r.applied)}</td>
+      <td><span class="pill ${stagePillCls(r.stage)}">${r.stage}</span></td><td>${scoreCell}</td>
+      ${ed?`<td class="row-actions" onclick="event.stopPropagation()"><button class="icon-btn" onclick="editRecruit('${r.id}')">✏️</button><button class="icon-btn" onclick="del('recruits','${r.id}')">🗑</button></td>`:''}
+    </tr>`;
+  }).join('')||`<tr><td colspan="${ed?7:6}"><div class="empty">該当する候補者がいません</div></td></tr>`;
+}
+
+// 候補者 詳細（レーダーチャート付き）
+function showRecruit(id){
+  const r=(STORE.recruits||[]).find(z=>z.id===id); if(!r) return;
+  const ed=canEdit('recruits');
+  const sc=SCORE_AXES.reduce((o,a)=>{o[a.key]=Number((r.scores||{})[a.key]||0);return o;},{});
+  const scored=recHasScore(r);
+  const kv=(k,v)=>`<div class="stat-line"><span class="muted">${k}</span><b>${v}</b></div>`;
+  openModal(escapeHtml(r.name||'候補者'),`
+    <div style="display:grid;grid-template-columns:1fr 220px;gap:18px;align-items:start">
+      <div>
+        ${kv('フリガナ', escapeHtml(r.kana||'—'))}
+        ${kv('ポジション', escapeHtml(r.position||'—'))}
+        ${kv('選考状況', `<span class="pill ${stagePillCls(r.stage)}">${r.stage}</span>`)}
+        ${kv('流入経路', escapeHtml(r.source||'—'))}
+        ${kv('応募日', r.applied||'—')}
+        ${kv('AirワークID', escapeHtml(r.airworkId||'—'))}
+        ${kv('合計スコア', scored?`${recTotal(r)} / 25`:'未評価')}
+        <div style="margin-top:10px"><div class="muted" style="font-size:12px;margin-bottom:4px">評価メモ</div>
+          <div style="font-size:13px;line-height:1.7;white-space:pre-wrap;color:${r.note?'var(--txt)':'var(--muted)'}">${escapeHtml(r.note||'メモはありません')}</div></div>
+      </div>
+      <div style="text-align:center">
+        ${scored?radarSVG(sc):`<div class="empty" style="padding:30px 10px">まだ評価が<br>入力されていません</div>`}
+        <div style="margin-top:6px">${SCORE_AXES.map(a=>`<div style="display:flex;justify-content:space-between;font-size:12px;padding:2px 6px"><span class="muted">${a.label}</span><b style="color:${a.color}">${scored?sc[a.key]:'—'}</b></div>`).join('')}</div>
+      </div>
+    </div>`, ed?()=>{ closeModal(); editRecruit(id); }:null);
+  const sv=document.getElementById('modal-save');
+  if(ed){ sv.textContent='✏️ 編集する'; } else { sv.style.display='none'; }
+}
+
+// 候補者 追加・編集（5軸スライダー＋レーダー）
 function editRecruit(id){
-  const x=(STORE.recruits||[]).find(z=>z.id===id)||{name:'',position:'',stage:'応募',source:'求人媒体',applied:todayISO(),note:''};
-  openModal(id?'候補者を編集':'候補者を追加',`${field('候補者名','r_name',x.name)}${field('募集ポジション','r_pos',x.position)}
-    ${selField('選考状況','r_stage',x.stage,RECRUIT_STAGES)}
-    ${selField('流入経路','r_src',x.source,['リファラル','求人媒体','エージェント','直接応募','SNS','その他'])}
-    ${field('応募日','r_applied',x.applied,'date')}${field('メモ','r_note',x.note)}`,
-    ()=>upsert('recruits',{id:id||b(),name:fv('r_name'),position:fv('r_pos'),stage:fv('r_stage'),source:fv('r_src'),applied:fv('r_applied'),note:fv('r_note')},id));
+  const x=(STORE.recruits||[]).find(z=>z.id===id)||{name:'',kana:'',position:'',stage:'応募',source:'Airワーク',airworkId:'',applied:todayISO(),note:'',scores:{}};
+  const sc=SCORE_AXES.reduce((o,a)=>{o[a.key]=Number((x.scores||{})[a.key])||3;return o;},{});
+  const sliders=SCORE_AXES.map(a=>`
+    <div class="slider-row">
+      <label>${a.label}</label>
+      <input type="range" min="1" max="5" step="1" value="${sc[a.key]}" id="rs_${a.key}" oninput="recPreview()" style="accent-color:${a.color}">
+      <b id="rv_${a.key}" style="color:${a.color}">${sc[a.key]}</b>
+    </div>`).join('');
+  openModal(id?'候補者を編集':'候補者を追加',`
+    <div class="field two"><label>氏名 / フリガナ</label>
+      <input id="r_name" value="${escapeHtml(x.name||'')}" placeholder="山田 太郎"><input id="r_kana" value="${escapeHtml(x.kana||'')}" placeholder="やまだ たろう"></div>
+    ${field('応募ポジション','r_pos',x.position)}
+    <div class="field two"><label>流入経路 / 選考状況</label>
+      <select id="r_src">${RECRUIT_SOURCES.map(o=>`<option${o===(x.source||'Airワーク')?' selected':''}>${o}</option>`).join('')}</select>
+      <select id="r_stage">${RECRUIT_STAGES.map(o=>`<option${o===x.stage?' selected':''}>${o}</option>`).join('')}</select></div>
+    <div class="field two"><label>応募日 / AirワークID（任意）</label>
+      <input id="r_applied" type="date" value="${x.applied||todayISO()}"><input id="r_aw" value="${escapeHtml(x.airworkId||'')}" placeholder="AW-00000"></div>
+    <div class="field"><label>5項目 評価スコア（1〜5）</label>
+      <div style="display:grid;grid-template-columns:1fr 180px;gap:14px;align-items:center">
+        <div>${sliders}</div>
+        <div id="rec-radar" style="text-align:center">${radarSVG(sc,170)}</div>
+      </div>
+    </div>
+    <div class="field"><label>評価メモ</label><textarea id="r_note" rows="3" placeholder="面接での所感、強み・懸念点など">${escapeHtml(x.note||'')}</textarea></div>`,
+    ()=>{
+      if(!fv('r_name').trim()) throw new Error('氏名を入力してください');
+      const scores=SCORE_AXES.reduce((o,a)=>{o[a.key]=Number(fv('rs_'+a.key));return o;},{});
+      return upsert('recruits',{id:id||b(),name:fv('r_name').trim(),kana:fv('r_kana').trim(),position:fv('r_pos'),
+        stage:fv('r_stage'),source:fv('r_src'),airworkId:fv('r_aw').trim(),applied:fv('r_applied'),note:fv('r_note'),scores},id);
+    });
 }
+function recPreview(){
+  const sc={}; SCORE_AXES.forEach(a=>{ const v=Number(fv('rs_'+a.key)); sc[a.key]=v; const el=document.getElementById('rv_'+a.key); if(el) el.textContent=v; });
+  const rd=document.getElementById('rec-radar'); if(rd) rd.innerHTML=radarSVG(sc,170);
+}
+
+// Airワーク連携（CSV取り込み/書き出し ＋ API連携枠）
+function recruitIntegration(){
+  const ed=canEdit('recruits');
+  const awCount=(STORE.recruits||[]).filter(r=>r.source==='Airワーク').length;
+  openModal('Airワーク連携 / CSV',`
+    <div class="alert info" style="margin-bottom:14px">
+      <b>連携方式について：</b> Airワーク採用管理には一般公開されたAPIが無いため、現時点の連携は
+      <b>CSVの取り込み／書き出し</b>で行います。将来 公式API等が使える場合に備え、下に「API連携」枠を用意しています（未実装）。
+    </div>
+    <div class="stat-line"><span class="muted">現在Airワーク経由の候補者</span><b>${awCount}名</b></div>
+    <div style="margin:16px 0 8px;font-weight:600">CSV連携（利用可能）</div>
+    <p class="muted" style="font-size:12px;margin:0 0 12px;line-height:1.7">Airワークからダウンロードした応募者CSVを取り込みます。氏名・フリガナ・ポジション・流入経路・応募日・各評価項目の列を自動でマッピングします。</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+      ${ed?`<button class="btn ghost" onclick="document.getElementById('rec-csv-file').click()">⬆ CSVを取り込む</button>`:''}
+      <button class="btn ghost" onclick="recExportCsv()">⬇ CSVを書き出す</button>
+      <input id="rec-csv-file" type="file" accept=".csv" style="display:none" onchange="recImportCsv(this)">
+    </div>
+    <div style="margin:20px 0 8px;font-weight:600">API連携 <span class="pill muted">準備中</span></div>
+    <div class="field"><label>APIエンドポイント</label><input disabled placeholder="https://api.airwork...（未設定）" style="opacity:.6"></div>
+    <div class="field"><label>APIキー / トークン</label><input disabled placeholder="接続情報が利用可能になり次第設定" style="opacity:.6"></div>`, null);
+  const sv=document.getElementById('modal-save'); sv.style.display='none';
+}
+function recExportCsv(){
+  const rs=STORE.recruits||[];
+  const header=['氏名','フリガナ','ポジション','流入経路','AirワークID','応募日','選考状況',...SCORE_AXES.map(a=>a.label),'合計','メモ'];
+  const rows=rs.map(r=>[r.name,r.kana,r.position,r.source,r.airworkId,r.applied,r.stage,...SCORE_AXES.map(a=>(r.scores||{})[a.key]??''),recTotal(r),(r.note||'').replace(/\n/g,' ')]);
+  const csv=[header,...rows].map(row=>row.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`候補者データ_${todayISO()}.csv`; a.click();
+}
+function recImportCsv(input){
+  const file=input.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    try{
+      const text=String(e.target.result).replace(/^﻿/,'');
+      const lines=text.split(/\r?\n/).filter(l=>l.trim());
+      const parse=line=>{ const out=[]; let cur='',q=false; for(let i=0;i<line.length;i++){ const ch=line[i];
+        if(q){ if(ch==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; }
+        else { if(ch===','){out.push(cur);cur='';} else if(ch==='"'){q=true;} else cur+=ch; } } out.push(cur); return out; };
+      const head=parse(lines[0]); const idx=n=>head.findIndex(h=>h.includes(n));
+      const imported=lines.slice(1).map(line=>{ const cols=parse(line); const g=(n,d='')=>{ const i=idx(n); return i>=0?cols[i]:d; };
+        const scores=SCORE_AXES.reduce((o,a)=>{ const i=idx(a.label); o[a.key]=i>=0?(Number(cols[i])||0):0; return o; },{});
+        const stg=g('選考状況')||g('ステータス'); const stage=RECRUIT_STAGES.includes(stg)?stg:'応募';
+        return {id:b(),name:g('氏名'),kana:g('フリガナ'),position:g('ポジション')||g('職種')||'',source:g('流入経路')||'Airワーク',
+          airworkId:g('AirワークID')||g('ID'),applied:g('応募日')||todayISO(),stage,note:g('メモ'),scores};
+      }).filter(r=>r.name);
+      if(!imported.length){ alert('取り込めるデータがありませんでした'); input.value=''; return; }
+      STORE.recruits=[...imported,...(STORE.recruits||[])];
+      await persist('recruits'); closeModal(); render();
+      alert(`${imported.length}件を取り込みました`);
+    }catch(err){ alert('CSVの読み込みに失敗しました: '+err.message); }
+    input.value='';
+  };
+  reader.readAsText(file,'UTF-8');
+}
+function renderRecruits(c,p){ recRender(); }
 
 // ---- パスワード変更（本人） ----
 function changePassword(){

@@ -11,9 +11,10 @@ Mac/Linux標準のPython3だけで動作（追加ライブラリ不要）。
 初期管理者アカウント:  ID = admin  /  パスワード = admin123
 ※ 初回ログイン後、必ずパスワードを変更してください。
 """
-import json, os, hashlib, hmac, secrets, threading, time, socket, sys
+import json, os, hashlib, hmac, secrets, threading, time, socket, sys, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs, urlencode
+from urllib.request import Request, urlopen
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # DATA_DIR は環境変数で上書き可（クラウドの永続ディスクを指定するため）
@@ -37,15 +38,265 @@ PAGE_COLLECTIONS = {
     "people":    ["people", "businesses"],
     "tools":     ["tools"],
     "recruits":  ["recruits"],
+    "cashflow":  ["cashflow"],   # 資金繰り（開始残高などの設定を保存）
 }
 # 各ページが編集できるデータ種別
 PAGE_WRITE = {
     "business": ["businesses"], "sales": ["sales"], "finance": ["finance"],
     "breakeven": ["cost"], "tasks": ["tasks"], "contracts": ["contracts"], "people": ["people"],
-    "tools": ["tools"], "recruits": ["recruits"],
+    "tools": ["tools"], "recruits": ["recruits"], "cashflow": ["cashflow"],
     "dashboard": [], "analysis": [],
 }
 ALL_PAGES = list(PAGE_COLLECTIONS.keys())
+
+# =====================================================================
+# 資金繰り（GMOあおぞらネット銀行 連携）
+#   トークンは環境変数でのみ設定し、共有DBには保存しない。
+#     GMO_MODE          : mock | sunabar | production（既定 mock）
+#     GMO_ACCESS_TOKEN  : アクセストークン
+#     GMO_ACCOUNT_ID    : 口座ID（必要な場合）
+#     GMO_BASE_URL      : APIベースURL
+#     GMO_ACCOUNT_TYPE  : corporation | personal
+#     GMO_TXN_PATH      : 入出金明細照会のパス（{type}を口座種別で置換）
+# =====================================================================
+CF_CATEGORIES = {
+    "sales":       {"label": "売上入金",         "group": "operating_in"},
+    "other_in":    {"label": "その他営業収入",   "group": "operating_in"},
+    "purchase":    {"label": "仕入・外注",       "group": "operating_out"},
+    "payroll":     {"label": "人件費",           "group": "operating_out"},
+    "tax":         {"label": "税金・社会保険",   "group": "operating_out"},
+    "expense":     {"label": "経費・その他",     "group": "operating_out"},
+    "finance_in":  {"label": "財務収入（借入）", "group": "finance_in"},
+    "finance_out": {"label": "財務支出（返済）", "group": "finance_out"},
+}
+CF_RULES = {
+    "in": [
+        {"category": "finance_in", "keywords": ["借入", "融資", "ローン", "貸付", "ﾕｳｼ"]},
+        {"category": "other_in",   "keywords": ["利息", "還付", "助成", "補助金", "配当", "返金"]},
+    ],
+    "out": [
+        {"category": "finance_out", "keywords": ["返済", "約定", "元金", "ﾍﾝｻｲ", "ﾘｰｽ", "リース"]},
+        {"category": "payroll",     "keywords": ["給与", "賞与", "役員報酬", "給料", "ｷｭｳﾖ", "賃金", "ｼﾞｮｳﾖ"]},
+        {"category": "tax",         "keywords": ["税", "社会保険", "年金", "労働保険", "ｾﾞｲ", "健康保険", "ﾎｹﾝ", "ﾈﾝｷﾝ"]},
+        {"category": "purchase",    "keywords": ["仕入", "外注", "業務委託", "ｼｲﾚ", "ｶﾞｲﾁｭｳ", "仕入れ"]},
+        {"category": "expense",     "keywords": ["家賃", "水道", "電気", "ガス", "通信", "電話", "広告", "手数料", "ﾔﾁﾝ", "ﾃﾞﾝｷ", "ﾂｳｼﾝ"]},
+    ],
+}
+
+
+def cf_bank_config():
+    return {
+        "mode": os.environ.get("GMO_MODE", "mock"),
+        "base_url": os.environ.get("GMO_BASE_URL", "https://api.sunabar.gmo-aozora.com"),
+        "account_type": os.environ.get("GMO_ACCOUNT_TYPE", "corporation"),
+        "access_token": os.environ.get("GMO_ACCESS_TOKEN", ""),
+        "account_id": os.environ.get("GMO_ACCOUNT_ID", ""),
+        "txn_path": os.environ.get("GMO_TXN_PATH", "/{type}/v1/accounts/transactions"),
+    }
+
+
+def cf_get_transactions(date_from, date_to):
+    """正規化済みの明細リストとデータ元情報を返す。"""
+    cfg = cf_bank_config()
+    mode = cfg["mode"]
+    if mode in ("sunabar", "production"):
+        try:
+            raw = cf_fetch_bank(cfg, date_from, date_to)
+            txns = [t for t in (cf_normalize(x) for x in raw) if t]
+            return txns, {"source": mode, "count": len(txns), "error": None}
+        except Exception as e:
+            txns = cf_mock(date_from, date_to)
+            return txns, {"source": "mock(fallback)", "count": len(txns),
+                          "error": "実データ取得に失敗したためサンプル表示中: %s" % e}
+    txns = cf_mock(date_from, date_to)
+    return txns, {"source": "mock", "count": len(txns), "error": None}
+
+
+def cf_fetch_bank(cfg, date_from, date_to):
+    token = (cfg.get("access_token") or "").strip()
+    if not token:
+        raise RuntimeError("アクセストークン未設定（環境変数 GMO_ACCESS_TOKEN）")
+    path = cfg["txn_path"].replace("{type}", cfg["account_type"])
+    base = cfg["base_url"].rstrip("/")
+    params = {"dateFrom": date_from.replace("-", ""), "dateTo": date_to.replace("-", "")}
+    if cfg.get("account_id"):
+        params["accountId"] = cfg["account_id"]
+    url = base + path + "?" + urlencode(params)
+    req = Request(url, headers={"Authorization": "Bearer " + token,
+                                "x-access-token": token, "Accept": "application/json"})
+    with urlopen(req, timeout=30) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    return cf_extract_list(data)
+
+
+def cf_extract_list(data):
+    if isinstance(data, list):
+        return data
+    if not isinstance(data, dict):
+        return []
+    for key in ("transactions", "transactionList", "meisai", "details", "list"):
+        if isinstance(data.get(key), list):
+            return data[key]
+    accts = data.get("accounts") or data.get("accountList")
+    if isinstance(accts, list):
+        out = []
+        for a in accts:
+            if isinstance(a, dict):
+                for key in ("transactions", "transactionList", "details"):
+                    if isinstance(a.get(key), list):
+                        out.extend(a[key])
+        if out:
+            return out
+    for v in data.values():
+        if isinstance(v, list) and v and isinstance(v[0], dict):
+            return v
+    return []
+
+
+def cf_normalize(t):
+    if not isinstance(t, dict):
+        return None
+
+    def pick(*keys):
+        for k in keys:
+            if k in t and t[k] not in (None, ""):
+                return t[k]
+        return None
+
+    date = cf_fmt_date(pick("transactionDate", "valueDate", "date", "transaction_date", "torihikiDate"))
+    if not date:
+        return None
+    amount = cf_to_int(pick("transactionAmount", "amount", "value", "kingaku"))
+    remarks = pick("remarks", "itemName", "transactionContent", "summary",
+                   "description", "content", "tekiyo", "counterPartyName") or ""
+    direction = None
+    dw = pick("depositWithdrawalCategory", "transactionType", "valueClass",
+              "creditDebitType", "torihikiKubun")
+    if dw is not None:
+        s = str(dw).strip().lower()
+        if s in ("1", "入金", "credit", "cr", "deposit", "nyukin", "in"):
+            direction = "in"
+        elif s in ("2", "出金", "debit", "dr", "withdrawal", "shukkin", "out"):
+            direction = "out"
+    if direction is None:
+        if amount < 0:
+            direction = "out"
+        elif cf_to_int(t.get("creditAmount")):
+            direction = "in"
+        elif cf_to_int(t.get("debitAmount")):
+            direction = "out"
+        else:
+            direction = "in"
+    if "creditAmount" in t or "debitAmount" in t:
+        amount = cf_to_int(t.get("creditAmount")) or cf_to_int(t.get("debitAmount"))
+    return {"date": date, "amount": abs(amount), "direction": direction, "remarks": str(remarks)}
+
+
+def cf_fmt_date(v):
+    if v is None:
+        return None
+    digits = "".join(ch for ch in str(v) if ch.isdigit())
+    if len(digits) >= 8:
+        return "%s-%s-%s" % (digits[0:4], digits[4:6], digits[6:8])
+    return None
+
+
+def cf_to_int(v):
+    if v is None:
+        return 0
+    if isinstance(v, (int, float)):
+        return int(v)
+    s = str(v)
+    neg = s.strip().startswith(("-", "△", "▲"))
+    s = "".join(ch for ch in s if ch.isdigit())
+    if not s:
+        return 0
+    return -int(s) if neg else int(s)
+
+
+def cf_classify(txn):
+    remarks = txn.get("remarks", "")
+    direction = txn.get("direction", "in")
+    for rule in CF_RULES.get(direction, []):
+        for kw in rule["keywords"]:
+            if kw and kw in remarks:
+                return rule["category"]
+    return "sales" if direction == "in" else "expense"
+
+
+def cf_month_range(date_from, date_to):
+    y, m = int(date_from[0:4]), int(date_from[5:7])
+    y2, m2 = int(date_to[0:4]), int(date_to[5:7])
+    out = []
+    while (y, m) <= (y2, m2):
+        out.append("%04d-%02d" % (y, m))
+        m += 1
+        if m > 12:
+            m, y = 1, y + 1
+    return out
+
+
+def cf_build(txns, months, opening0):
+    per = {mm: {c: 0 for c in CF_CATEGORIES} for mm in months}
+    detail = {mm: [] for mm in months}
+    for t in txns:
+        mm = t["date"][:7]
+        if mm not in per:
+            continue
+        cat = cf_classify(t)
+        per[mm][cat] += t["amount"]
+        detail[mm].append({**t, "category": cat, "category_label": CF_CATEGORIES[cat]["label"]})
+    rows = []
+    opening = int(opening0)
+    for mm in months:
+        c = per[mm]
+        op_in = c["sales"] + c["other_in"]
+        op_out = c["purchase"] + c["payroll"] + c["tax"] + c["expense"]
+        fin_in, fin_out = c["finance_in"], c["finance_out"]
+        month_net = (op_in - op_out) + (fin_in - fin_out)
+        closing = opening + month_net
+        rows.append({"month": mm, "opening": opening, "categories": c,
+                     "operating_in": op_in, "operating_out": op_out,
+                     "operating_net": op_in - op_out, "finance_in": fin_in,
+                     "finance_out": fin_out, "finance_net": fin_in - fin_out,
+                     "month_net": month_net, "closing": closing,
+                     "detail_count": len(detail[mm])})
+        opening = closing
+    return {"rows": rows, "detail_by_month": detail}
+
+
+def cf_mock(date_from, date_to):
+    txns = []
+    for mm in cf_month_range(date_from, date_to):
+        y, mo = int(mm[0:4]), int(mm[5:7])
+        seed = int(hashlib.md5(mm.encode()).hexdigest(), 16)
+
+        def var(base, pct, n):
+            r = (seed >> (n * 5)) % 1000 / 1000.0
+            return int(base * (1 + (r - 0.5) * 2 * pct))
+
+        for i, name in enumerate(["ｶ)ｱｵｿﾞﾗｼｮｳｼﾞ", "ｶ)ﾐﾗｲﾃｯｸ", "ｹﾞﾝｷ ｹｱ ｺﾞｳ", "ｶ)ｻｸﾗﾌｰｽﾞ"]):
+            txns.append(cf_mk(y, mo, 5 + i * 6, var(650000, 0.25, i), "in", name))
+        if (seed % 3) == 0:
+            txns.append(cf_mk(y, mo, 20, 3000000, "in", "ﾆﾎﾝｾｲｻｸｺﾞﾝ ﾕｳｼ"))
+        txns.append(cf_mk(y, mo, 10, var(720000, 0.2, 1), "out", "ｶ)ﾀﾞｲｲﾁ ｼｲﾚ"))
+        txns.append(cf_mk(y, mo, 15, var(280000, 0.3, 2), "out", "ﾌﾘｰﾗﾝｽ ｶﾞｲﾁｭｳ ﾋ"))
+        txns.append(cf_mk(y, mo, 25, var(1250000, 0.05, 3), "out", "ｷｭｳﾖ ｼﾊﾗｲ"))
+        txns.append(cf_mk(y, mo, 1, 220000, "out", "ﾔﾁﾝ ｵﾌｨｽ"))
+        txns.append(cf_mk(y, mo, 27, var(58000, 0.2, 4), "out", "ﾃﾞﾝｷ ｶﾞｽ ｽｲﾄﾞｳ"))
+        txns.append(cf_mk(y, mo, 27, var(42000, 0.15, 5), "out", "ﾂｳｼﾝﾋ ｹｲﾀｲ"))
+        txns.append(cf_mk(y, mo, 28, var(320000, 0.1, 6), "out", "ｼｬｶｲﾎｹﾝﾘｮｳ"))
+        txns.append(cf_mk(y, mo, 26, 180000, "out", "ｼｬｸﾆｭｳｷﾝ ﾍﾝｻｲ ｶﾞﾝｷﾝ"))
+    txns = [t for t in txns if date_from <= t["date"] <= date_to]
+    txns.sort(key=lambda t: t["date"])
+    return txns
+
+
+def cf_mk(y, mo, day, amount, direction, remarks):
+    last = [31, 29 if (y % 4 == 0 and (y % 100 != 0 or y % 400 == 0)) else 28,
+            31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mo - 1]
+    return {"date": "%04d-%02d-%02d" % (y, mo, min(day, last)),
+            "amount": int(amount), "direction": direction, "remarks": remarks}
 
 LOCK = threading.RLock()
 
@@ -123,10 +374,14 @@ def seed_store():
             {"id": gid("k"), "name": "Google カレンダー", "url": "https://calendar.google.com", "category": "スケジュール", "icon": "📅"},
         ],
         "recruits": [
-            {"id": gid("r"), "name": "応募者A", "position": "バックエンドエンジニア", "stage": "面接", "source": "エージェント", "applied": days(-10), "note": ""},
-            {"id": gid("r"), "name": "応募者B", "position": "営業", "stage": "書類選考", "source": "求人媒体", "applied": days(-5), "note": ""},
-            {"id": gid("r"), "name": "応募者C", "position": "デザイナー", "stage": "内定", "source": "リファラル", "applied": days(-20), "note": ""},
-            {"id": gid("r"), "name": "応募者D", "position": "バックエンドエンジニア", "stage": "応募", "source": "直接応募", "applied": days(-2), "note": ""},
+            {"id": gid("r"), "name": "田中 陽菜", "kana": "たなか はるな", "position": "バックエンドエンジニア", "stage": "面接",     "source": "Airワーク", "airworkId": "AW-10231", "applied": days(-10), "note": "React経験3年。技術力が高く即戦力。",
+             "scores": {"skill": 5, "experience": 4, "motivation": 4, "culture": 4, "communication": 3}},
+            {"id": gid("r"), "name": "佐藤 健太", "kana": "さとう けんた", "position": "営業",                 "stage": "書類選考", "source": "Airワーク", "airworkId": "AW-10245", "applied": days(-5),  "note": "前職で新規開拓トップ。ポテンシャル高い。",
+             "scores": {"skill": 3, "experience": 4, "motivation": 5, "culture": 4, "communication": 5}},
+            {"id": gid("r"), "name": "鈴木 美咲", "kana": "すずき みさき", "position": "デザイナー",           "stage": "内定",     "source": "リファラル", "airworkId": "",         "applied": days(-20), "note": "SNS運用・ブランディングに強み。",
+             "scores": {"skill": 4, "experience": 3, "motivation": 4, "culture": 5, "communication": 4}},
+            {"id": gid("r"), "name": "山本 大輔", "kana": "やまもと だいすけ", "position": "バックエンドエンジニア", "stage": "応募", "source": "Indeed",   "airworkId": "",         "applied": days(-2),  "note": "",
+             "scores": {"skill": 3, "experience": 3, "motivation": 4, "culture": 3, "communication": 4}},
         ],
     }
 
@@ -283,6 +538,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"rev": DB["rev"]})
         if path == "/api/store":
             return self._api_store_get()
+        if path == "/api/cashflow":
+            return self._api_cashflow(urlparse(self.path).query)
         if path == "/api/users":
             return self._api_users_list()
         return self._err(404, "not found")
@@ -297,6 +554,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_password()
         if path == "/api/users":
             return self._api_users_create()
+        # 1件だけ追加/更新（複数タブでもコレクション全体を壊さない）
+        if path.startswith("/api/store/") and path.endswith("/item"):
+            return self._api_item_upsert(path[len("/api/store/"):-len("/item")])
         return self._err(404, "not found")
 
     def do_PUT(self):
@@ -311,6 +571,11 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path.startswith("/api/users/"):
             return self._api_users_delete(path[len("/api/users/"):])
+        # /api/store/<coll>/item/<id> — 1件だけ削除
+        if path.startswith("/api/store/"):
+            parts = path[len("/api/store/"):].split("/")
+            if len(parts) == 3 and parts[1] == "item":
+                return self._api_item_delete(parts[0], parts[2])
         return self._err(404, "not found")
 
     # ---- 静的 ----
@@ -394,6 +659,85 @@ class Handler(BaseHTTPRequestHandler):
             save_db(DB)
             rev = DB["rev"]
         self._json(200, {"ok": True, "rev": rev})
+
+    def _api_item_upsert(self, collection):
+        """1件だけ追加/更新（id一致で置換、無ければ追加）。他の項目には触れない。"""
+        u = self._current_user()
+        if not u:
+            return self._err(401, "未ログイン")
+        if collection not in writable_collections(u):
+            return self._err(403, "このデータを編集する権限がありません")
+        d = self._body()
+        item = d.get("value")
+        if not isinstance(item, dict) or not item.get("id"):
+            return self._err(400, "id 付きの item が必要です")
+        with LOCK:
+            lst = DB["store"].get(collection)
+            if not isinstance(lst, list):
+                lst = []
+                DB["store"][collection] = lst
+            for i, x in enumerate(lst):
+                if x.get("id") == item["id"]:
+                    lst[i] = item
+                    break
+            else:
+                lst.append(item)
+            DB["rev"] += 1
+            save_db(DB)
+            rev = DB["rev"]
+        self._json(200, {"ok": True, "rev": rev, "item": item})
+
+    def _api_item_delete(self, collection, item_id):
+        """1件だけ削除。他の項目には触れない。"""
+        u = self._current_user()
+        if not u:
+            return self._err(401, "未ログイン")
+        if collection not in writable_collections(u):
+            return self._err(403, "このデータを編集する権限がありません")
+        with LOCK:
+            lst = DB["store"].get(collection)
+            if isinstance(lst, list):
+                DB["store"][collection] = [x for x in lst if x.get("id") != item_id]
+            DB["rev"] += 1
+            save_db(DB)
+            rev = DB["rev"]
+        self._json(200, {"ok": True, "rev": rev})
+
+    # ---- 資金繰り（銀行API連携） ----
+    def _api_cashflow(self, query):
+        u = self._current_user()
+        if not u:
+            return self._err(401, "未ログイン")
+        pages = ALL_PAGES if u["role"] == "admin" else u.get("pages", [])
+        if "cashflow" not in pages:
+            return self._err(403, "資金繰りページの権限がありません")
+        q = parse_qs(query)
+        today = datetime.date.today()
+        y, mo = today.year, today.month - 5
+        while mo <= 0:
+            mo += 12
+            y -= 1
+        date_from = q.get("from", ["%04d-%02d-01" % (y, mo)])[0]
+        date_to = q.get("to", [today.strftime("%Y-%m-%d")])[0]
+        if len(date_from) == 7:
+            date_from += "-01"
+        if len(date_to) == 7:
+            date_to += "-28"
+        with LOCK:
+            settings = DB["store"].get("cashflow") or {}
+        opening = settings.get("opening_balance", 3000000)
+        try:
+            txns, source = cf_get_transactions(date_from, date_to)
+            months = cf_month_range(date_from, date_to)
+            cf = cf_build(txns, months, opening)
+            self._json(200, {"ok": True, "source": source,
+                             "range": {"from": date_from, "to": date_to},
+                             "opening_balance": opening, "categories": CF_CATEGORIES,
+                             "cashflow": cf["rows"], "detail_by_month": cf["detail_by_month"]})
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self._err(500, str(e))
 
     # ---- アカウント管理（管理者のみ） ----
     def _require_admin(self):

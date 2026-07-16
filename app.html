@@ -340,9 +340,11 @@ function legendStat(k,v){ return `<div class="stat-line"><span class="muted">${k
 // 集計
 //==================================================================
 // 売上は「売上管理(事業別売上)」を正データとする。財務(PL)の売上もここに連動する
-function salesTotal(i){ const s=STORE.sales||[]; return (s[i]||{}).total||0; }
+// 月次売上の合計は「現在登録されている各事業の列」から常に計算する（保存済みtotalは使わない＝事業を作り直しても食い違わない）
+function rowTotal(row){ return salesCols().reduce((a,c)=>a+((row&&row[c.key])||0),0); }
+function salesTotal(i){ return rowTotal((STORE.sales||[])[i]); }
 function monthOp(i){ const x=(STORE.finance||[])[i]||{}; return salesTotal(i)-(x.cogs||0)-(x.sga||0); }
-function ytd(){ const f=STORE.finance||[]; const rev=sum(STORE.sales,x=>x.total); const cogs=sum(f,x=>x.cogs),sga=sum(f,x=>x.sga); const op=rev-cogs-sga;
+function ytd(){ const f=STORE.finance||[]; const rev=sum(STORE.sales,x=>rowTotal(x)); const cogs=sum(f,x=>x.cogs),sga=sum(f,x=>x.sga); const op=rev-cogs-sga;
   return {rev,op,cogs,sga,opRate:rev?op/rev*100:0,gpRate:rev?(rev-cogs)/rev*100:0}; }
 function laborTotal(){ return sum(STORE.people,p=>p.cost)*12; }
 function breakeven(){ const {fixedMonthly,variableRate}=STORE.cost||{fixedMonthly:0,variableRate:0}; const cmRate=1-variableRate;
@@ -364,7 +366,7 @@ function render(){
 function renderDashboard(c,p){
   setHeader(p.title,p.sub,'');
   const y=ytd(); const be=breakeven(); const f=STORE.finance||[]; const s=STORE.sales||[];
-  const prevRev=s.slice(0,6).reduce((a,x)=>a+x.total,0), curRev=s.slice(6).reduce((a,x)=>a+x.total,0);
+  const prevRev=s.slice(0,6).reduce((a,x)=>a+rowTotal(x),0), curRev=s.slice(6).reduce((a,x)=>a+rowTotal(x),0);
   const growth=prevRev?(curRev-prevRev)/prevRev*100:0;
   const overdue=(STORE.tasks||[]).filter(t=>t.status!=='完了'&&t.due<todayISO()).length;
   const expiring=(STORE.contracts||[]).filter(ct=>daysTo(ct.end)<=30&&daysTo(ct.end)>=0).length;
@@ -490,8 +492,8 @@ function renderSales(c,p){
   const s=STORE.sales||[];
   const scoped = s.length && s[0]._scoped;  // 事業スコープ中なら事業名
   let cols=presentSalesCols(s); if(!cols.length) cols=salesCols();
-  const total=sum(s,x=>x.total);
-  const maxMonth=s.length?months[s.indexOf(s.reduce((a,bb)=>bb.total>a.total?bb:a))]:'—';
+  const total=sum(s,x=>rowTotal(x));
+  const maxMonth=s.length?months[s.indexOf(s.reduce((a,bb)=>rowTotal(bb)>rowTotal(a)?bb:a))]:'—';
   setHeader(scoped?`売上管理（${scoped}）`:p.title, scoped?`${scoped}の売上推移`:p.sub,
     (ed && !scoped)?`<button class="btn ghost" onclick="editSales()">✏ 月次データを編集</button>`:(scoped?`<span class="pill info">自事業のみ表示</span>`:roBadge()));
   // 構成比チャート用セグメント
@@ -499,22 +501,23 @@ function renderSales(c,p){
   c.innerHTML=`
     <div class="grid kpis">
       ${kpi('年間売上合計','💹',yen(total),'')}${kpi('月平均','📅',yen(total/12),'')}
-      ${kpi('最高月','⬆️',yen(Math.max(...s.map(x=>x.total),0)),`<span class="muted">${maxMonth}</span>`)}
+      ${kpi('最高月','⬆️',yen(Math.max(...s.map(x=>rowTotal(x)),0)),`<span class="muted">${maxMonth}</span>`)}
       ${cols.length>1?kpi('主力比率','📊',total?(Math.max(...seg.map(g=>g.value))/total*100).toFixed(0)+'%':'0%',`<span class="muted">最大事業</span>`):kpi('対象事業','🏢',scoped||cols[0].label,'')}
     </div><div style="height:16px"></div>
     <div class="card"><h3>月次売上推移${cols.length>1?'（事業別）':''}</h3>${salesBars(s,cols)}</div><div style="height:16px"></div>
     <div class="card"><h3>月次明細</h3><table>
     <thead><tr><th>月</th>${cols.map(col=>`<th class="num">${col.label}</th>`).join('')}${cols.length>1?'<th class="num">合計</th>':''}</tr></thead>
-    <tbody>${s.map((x,i)=>`<tr><td>${months[i]}</td>${cols.map(col=>`<td class="num">${yen(x[col.key]||0)}</td>`).join('')}${cols.length>1?`<td class="num"><b>${yen(x.total)}</b></td>`:''}</tr>`).join('')}
+    <tbody>${s.map((x,i)=>`<tr><td>${months[i]}</td>${cols.map(col=>`<td class="num">${yen(x[col.key]||0)}</td>`).join('')}${cols.length>1?`<td class="num"><b>${yen(cols.reduce((a,col)=>a+(x[col.key]||0),0))}</b></td>`:''}</tr>`).join('')}
     <tr style="border-top:2px solid var(--line)"><td><b>合計</b></td>${cols.map(col=>`<td class="num"><b>${yen(sum(s,x=>x[col.key]||0))}</b></td>`).join('')}${cols.length>1?`<td class="num"><b>${yen(total)}</b></td>`:''}</tr>
     </tbody></table></div>`;
 }
 function salesBars(s,cols){
-  const max=Math.max(...s.map(x=>x.total),1);
-  return `<div class="bars">${s.map((x,i)=>`<div class="bar" title="${months[i]} 計 ${yen(x.total)}">
-    <div style="width:70%;height:${x.total/max*100}%;display:flex;flex-direction:column;justify-content:flex-end;border-radius:6px 6px 0 0;overflow:hidden">
-      ${cols.slice().reverse().map(col=>`<div style="background:${col.color};height:${x.total?(x[col.key]||0)/x.total*100:0}%"></div>`).join('')}
-    </div><small>${i+1}月</small></div>`).join('')}</div>
+  const rt=x=>cols.reduce((a,c)=>a+(x[c.key]||0),0);
+  const max=Math.max(...s.map(rt),1);
+  return `<div class="bars">${s.map((x,i)=>{const t=rt(x);return `<div class="bar" title="${months[i]} 計 ${yen(t)}">
+    <div style="width:70%;height:${t/max*100}%;display:flex;flex-direction:column;justify-content:flex-end;border-radius:6px 6px 0 0;overflow:hidden">
+      ${cols.slice().reverse().map(col=>`<div style="background:${col.color};height:${t?(x[col.key]||0)/t*100:0}%"></div>`).join('')}
+    </div><small>${i+1}月</small></div>`;}).join('')}</div>
     <div class="legend">${cols.map(col=>`<span><i style="background:${col.color}"></i>${col.label}</span>`).join('')}</div>`;
 }
 

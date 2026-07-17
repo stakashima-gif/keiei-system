@@ -956,6 +956,12 @@ function recHasScore(r){ return r.scores && SCORE_AXES.some(a=>Number(r.scores[a
 function recAvg(r){ if(!recHasScore(r)) return null; return SCORE_AXES.reduce((s,a)=>s+Number((r.scores||{})[a.key]||0),0)/SCORE_AXES.length; }
 function recTotal(r){ return SCORE_AXES.reduce((s,a)=>s+Number((r.scores||{})[a.key]||0),0); }
 function scoreColor(avg){ return avg>=4?'#4ade80':avg>=3?'#fbbf24':'#f87171'; }
+// 生年月日(YYYY-MM-DD)から満年齢を計算
+function ageFromBirth(iso){ if(!iso) return null; const d=new Date(iso); if(isNaN(d)) return null;
+  const t=new Date(); let a=t.getFullYear()-d.getFullYear(); const m=t.getMonth()-d.getMonth();
+  if(m<0||(m===0&&t.getDate()<d.getDate())) a--; return (a>=0&&a<130)?a:null; }
+function ageLabel(iso){ const a=ageFromBirth(iso); return a!=null?a+'歳':'—'; }
+function recAgeUpdate(){ const el=document.getElementById('r_age'); if(el) el.value=ageLabel(fv('r_birth')); }
 function stagePillCls(st){ return st==='入社'?'ok':st==='内定'?'info':st==='見送り'?'bad':st==='面接'?'warn':'muted'; }
 
 // レーダーチャート（5軸・ダークテーマ）
@@ -1012,7 +1018,7 @@ function recRender(){
       </select>
       <select id="rec-sort" onchange="recFilter.sort=this.value;recFillRows()">
         <option value="score"${recFilter.sort==='score'?' selected':''}>並び順: スコア高い順</option>
-        <option value="date"${recFilter.sort==='date'?' selected':''}>並び順: 応募日が新しい順</option>
+        <option value="date"${recFilter.sort==='date'?' selected':''}>並び順: 面談日が新しい順</option>
         <option value="name"${recFilter.sort==='name'?' selected':''}>並び順: 氏名（五十音）</option>
         <option value="stage"${recFilter.sort==='stage'?' selected':''}>並び順: 選考ステージ</option>
       </select>
@@ -1022,7 +1028,7 @@ function recRender(){
       ${RECRUIT_STAGES.map(st=>`<button class="chip rec-chip${recFilter.stage===st?' active':''}" data-st="${st}" onclick="recSetStage('${st}')">${st}</button>`).join('')}
     </div>
     <div class="card" style="padding:0;overflow:hidden"><table>
-      <thead><tr><th>候補者</th><th>ポジション</th><th>流入経路</th><th>応募日</th><th>選考状況</th><th>スコア(平均)</th>${ed?'<th></th>':''}</tr></thead>
+      <thead><tr><th>候補者</th><th>ポジション</th><th>流入経路</th><th>面談日</th><th>選考状況</th><th>スコア(平均)</th>${ed?'<th></th>':''}</tr></thead>
       <tbody id="rec-tbody"></tbody></table></div>`;
   recFillRows();
 }
@@ -1049,7 +1055,7 @@ function recFillRows(){
       :`<span class="scorebar"><i style="width:${avg/5*100}%;background:${scoreColor(avg)}"></i></span> <b style="color:${scoreColor(avg)}">${avg.toFixed(1)}</b>`;
     const srcCell=(r.source==='Airワーク')?`<span class="pill" style="background:rgba(245,158,11,.15);color:#fbbf24">Airワーク</span>`:`<span class="muted">${r.source||'—'}</span>`;
     return `<tr style="cursor:pointer" onclick="showRecruit('${r.id}')">
-      <td><b>${escapeHtml(r.name||'')}</b>${r.kana?`<div class="muted" style="font-size:11px">${escapeHtml(r.kana)}</div>`:''}</td>
+      <td><b>${escapeHtml(r.name||'')}</b>${r.birth?`<span class="muted" style="font-size:11px"> (${ageLabel(r.birth)})</span>`:''}${r.kana?`<div class="muted" style="font-size:11px">${escapeHtml(r.kana)}</div>`:''}</td>
       <td>${escapeHtml(r.position||'')}</td><td>${srcCell}</td><td>${fmtDate(r.applied)}</td>
       <td><span class="pill ${stagePillCls(r.stage)}">${r.stage}</span></td><td>${scoreCell}</td>
       ${ed?`<td class="row-actions" onclick="event.stopPropagation()"><button class="icon-btn" onclick="editRecruit('${r.id}')">✏️</button><button class="icon-btn" onclick="del('recruits','${r.id}')">🗑</button></td>`:''}
@@ -1068,10 +1074,11 @@ function showRecruit(id){
     <div style="display:grid;grid-template-columns:1fr 220px;gap:18px;align-items:start">
       <div>
         ${kv('フリガナ', escapeHtml(r.kana||'—'))}
+        ${kv('生年月日 / 年齢', (r.birth||'—')+(r.birth?`　<span style="color:var(--accent)">${ageLabel(r.birth)}</span>`:''))}
         ${kv('ポジション', escapeHtml(r.position||'—'))}
         ${kv('選考状況', `<span class="pill ${stagePillCls(r.stage)}">${r.stage}</span>`)}
         ${kv('流入経路', escapeHtml(r.source||'—'))}
-        ${kv('応募日', r.applied||'—')}
+        ${kv('面談日', r.applied||'—')}
         ${kv('AirワークID', escapeHtml(r.airworkId||'—'))}
         ${kv('合計スコア', scored?`${recTotal(r)} / 25`:'未評価')}
         <div style="margin-top:10px"><div class="muted" style="font-size:12px;margin-bottom:4px">評価メモ</div>
@@ -1088,7 +1095,7 @@ function showRecruit(id){
 
 // 候補者 追加・編集（5軸スライダー＋レーダー）
 function editRecruit(id){
-  const x=(STORE.recruits||[]).find(z=>z.id===id)||{name:'',kana:'',position:'',stage:'応募',source:'Airワーク',airworkId:'',applied:todayISO(),note:'',scores:{}};
+  const x=(STORE.recruits||[]).find(z=>z.id===id)||{name:'',kana:'',position:'',birth:'',stage:'応募',source:'Airワーク',airworkId:'',applied:todayISO(),note:'',scores:{}};
   const sc=SCORE_AXES.reduce((o,a)=>{o[a.key]=Number((x.scores||{})[a.key])||3;return o;},{});
   const sliders=SCORE_AXES.map(a=>`
     <div class="slider-row">
@@ -1100,10 +1107,13 @@ function editRecruit(id){
     <div class="field two"><label>氏名 / フリガナ</label>
       <input id="r_name" value="${escapeHtml(x.name||'')}" placeholder="山田 太郎"><input id="r_kana" value="${escapeHtml(x.kana||'')}" placeholder="やまだ たろう"></div>
     ${field('応募ポジション','r_pos',x.position)}
+    <div class="field two"><label>生年月日 / 年齢（自動計算）</label>
+      <input id="r_birth" type="date" value="${x.birth||''}" oninput="recAgeUpdate()">
+      <input id="r_age" value="${ageLabel(x.birth)}" disabled style="opacity:.7" title="生年月日から自動計算"></div>
     <div class="field two"><label>流入経路 / 選考状況</label>
       <select id="r_src">${RECRUIT_SOURCES.map(o=>`<option${o===(x.source||'Airワーク')?' selected':''}>${o}</option>`).join('')}</select>
       <select id="r_stage">${RECRUIT_STAGES.map(o=>`<option${o===x.stage?' selected':''}>${o}</option>`).join('')}</select></div>
-    <div class="field two"><label>応募日 / AirワークID（任意）</label>
+    <div class="field two"><label>面談日 / AirワークID（任意）</label>
       <input id="r_applied" type="date" value="${x.applied||todayISO()}"><input id="r_aw" value="${escapeHtml(x.airworkId||'')}" placeholder="AW-00000"></div>
     <div class="field"><label>5項目 評価スコア（1〜5）</label>
       <div style="display:grid;grid-template-columns:1fr 180px;gap:14px;align-items:center">
@@ -1116,7 +1126,7 @@ function editRecruit(id){
       if(!fv('r_name').trim()) throw new Error('氏名を入力してください');
       const scores=SCORE_AXES.reduce((o,a)=>{o[a.key]=Number(fv('rs_'+a.key));return o;},{});
       return upsert('recruits',{id:id||b(),name:fv('r_name').trim(),kana:fv('r_kana').trim(),position:fv('r_pos'),
-        stage:fv('r_stage'),source:fv('r_src'),airworkId:fv('r_aw').trim(),applied:fv('r_applied'),note:fv('r_note'),scores},id);
+        birth:fv('r_birth'),stage:fv('r_stage'),source:fv('r_src'),airworkId:fv('r_aw').trim(),applied:fv('r_applied'),note:fv('r_note'),scores},id);
     });
 }
 function recPreview(){
@@ -1135,7 +1145,7 @@ function recruitIntegration(){
     </div>
     <div class="stat-line"><span class="muted">現在Airワーク経由の候補者</span><b>${awCount}名</b></div>
     <div style="margin:16px 0 8px;font-weight:600">CSV連携（利用可能）</div>
-    <p class="muted" style="font-size:12px;margin:0 0 12px;line-height:1.7">Airワークからダウンロードした応募者CSVを取り込みます。氏名・フリガナ・ポジション・流入経路・応募日・各評価項目の列を自動でマッピングします。</p>
+    <p class="muted" style="font-size:12px;margin:0 0 12px;line-height:1.7">Airワークからダウンロードした応募者CSVを取り込みます。氏名・フリガナ・ポジション・流入経路・面談日・各評価項目の列を自動でマッピングします。</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px">
       ${ed?`<button class="btn ghost" onclick="document.getElementById('rec-csv-file').click()">⬆ CSVを取り込む</button>`:''}
       <button class="btn ghost" onclick="recExportCsv()">⬇ CSVを書き出す</button>
@@ -1148,7 +1158,7 @@ function recruitIntegration(){
 }
 function recExportCsv(){
   const rs=STORE.recruits||[];
-  const header=['氏名','フリガナ','ポジション','流入経路','AirワークID','応募日','選考状況',...SCORE_AXES.map(a=>a.label),'合計','メモ'];
+  const header=['氏名','フリガナ','ポジション','流入経路','AirワークID','面談日','選考状況',...SCORE_AXES.map(a=>a.label),'合計','メモ'];
   const rows=rs.map(r=>[r.name,r.kana,r.position,r.source,r.airworkId,r.applied,r.stage,...SCORE_AXES.map(a=>(r.scores||{})[a.key]??''),recTotal(r),(r.note||'').replace(/\n/g,' ')]);
   const csv=[header,...rows].map(row=>row.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
@@ -1169,7 +1179,7 @@ function recImportCsv(input){
         const scores=SCORE_AXES.reduce((o,a)=>{ const i=idx(a.label); o[a.key]=i>=0?(Number(cols[i])||0):0; return o; },{});
         const stg=g('選考状況')||g('ステータス'); const stage=RECRUIT_STAGES.includes(stg)?stg:'応募';
         return {id:b(),name:g('氏名'),kana:g('フリガナ'),position:g('ポジション')||g('職種')||'',source:g('流入経路')||'Airワーク',
-          airworkId:g('AirワークID')||g('ID'),applied:g('応募日')||todayISO(),stage,note:g('メモ'),scores};
+          airworkId:g('AirワークID')||g('ID'),applied:g('面談日')||g('応募日')||todayISO(),stage,note:g('メモ'),scores};
       }).filter(r=>r.name);
       if(!imported.length){ alert('取り込めるデータがありませんでした'); input.value=''; return; }
       STORE.recruits=[...imported,...(STORE.recruits||[])];

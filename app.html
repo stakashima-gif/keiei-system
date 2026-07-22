@@ -189,9 +189,10 @@ const PAGES = [
   {id:'contracts', icon:'📄', name:'契約管理', title:'契約管理', sub:'契約状況と更新期限のアラート', sect:'業務'},
   {id:'people', icon:'👥', name:'人材管理', title:'人材状況', sub:'人員構成・人件費・評価', sect:'業務'},
   {id:'recruits', icon:'🧑‍💼', name:'採用管理', title:'採用管理', sub:'求職者管理・5項目スコア評価・Airワーク連携', sect:'業務'},
+  {id:'memos', icon:'📝', name:'打ち合わせメモ', title:'打ち合わせメモ', sub:'商談・打ち合わせの記録。クライアント名で検索できます', sect:'業務'},
   {id:'tools', icon:'🔗', name:'ツール', title:'ツール一元管理', sub:'よく使うツールへのリンク集', sect:'ツール'},
 ];
-const PAGE_WRITE={business:['businesses'],sales:['sales'],finance:['finance'],breakeven:['cost'],tasks:['tasks'],contracts:['contracts'],people:['people'],tools:['tools'],recruits:['recruits'],cashflow:['cashflow'],dashboard:[],analysis:[]};
+const PAGE_WRITE={business:['businesses'],sales:['sales'],finance:['finance'],breakeven:['cost'],tasks:['tasks'],contracts:['contracts'],people:['people'],tools:['tools'],recruits:['recruits'],cashflow:['cashflow'],memos:['memos'],dashboard:[],analysis:[]};
 const PAGE_NAME=Object.fromEntries(PAGES.map(p=>[p.id,p.name]));
 
 //==================================================================
@@ -356,7 +357,7 @@ function breakeven(){ const {fixedMonthly,variableRate}=STORE.cost||{fixedMonthl
 function render(){
   markNav();
   const c=document.getElementById('content');
-  const map={dashboard:renderDashboard,analysis:renderAnalysis,breakeven:renderBreakeven,business:renderBusiness,tools:renderTools,recruits:renderRecruits,
+  const map={dashboard:renderDashboard,analysis:renderAnalysis,breakeven:renderBreakeven,business:renderBusiness,tools:renderTools,recruits:renderRecruits,memos:renderMemos,
     sales:renderSales,finance:renderFinance,cashflow:renderCashflow,tasks:renderTasks,contracts:renderContracts,people:renderPeople,users:renderUsers};
   const p=PAGES.find(x=>x.id===current);
   (map[current]||(()=>{c.innerHTML='<div class="empty">ページがありません</div>'}))(c,p);
@@ -1386,6 +1387,88 @@ function recImportCsv(input){
   reader.readAsText(file,'UTF-8');
 }
 function renderRecruits(c,p){ recRender(); }
+
+// ---- 打ち合わせメモ（クライアント検索対応） ----
+let memoQ='';
+function memoClients(){
+  return [...new Set([...(STORE.contracts||[]).map(x=>x.client), ...(STORE.memos||[]).map(m=>m.client)].filter(Boolean))];
+}
+function renderMemos(c,p){
+  const ed=canEdit('memos');
+  setHeader(p.title,p.sub, ed?`<button class="btn" onclick="editMemo()">＋ メモを追加</button>`:roBadge());
+  c.innerHTML=`
+    <div class="toolbar">
+      <input id="memo-q" placeholder="🔎 クライアント名・タイトル・内容・参加者で検索…" value="${escapeHtml(memoQ)}"
+        oninput="memoQ=this.value;memoRenderBody()"
+        style="flex:1;max-width:460px;background:var(--panel);border:1px solid var(--line);color:var(--txt);padding:9px 12px;border-radius:9px;font-size:13px">
+      ${memoQ?`<button class="btn ghost sm" onclick="memoQ='';render()">✕ クリア</button>`:''}
+    </div>
+    <div id="memo-body"></div>`;
+  memoRenderBody();
+}
+function memoRenderBody(){
+  const el=document.getElementById('memo-body'); if(!el) return;
+  const ed=canEdit('memos');
+  const memos=(STORE.memos||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const q=memoQ.trim().toLowerCase();
+  const hit=q?memos.filter(m=>((m.client||'')+' '+(m.title||'')+' '+(m.body||'')+' '+(m.attendees||'')).toLowerCase().includes(q)):memos;
+  // クライアント情報（契約＋メモ件数）— 検索時に表示
+  const clientHits=q?memoClients().filter(cl=>cl.toLowerCase().includes(q)):[];
+  const clientCard=clientHits.length?`<div class="card" style="margin-bottom:16px"><h3>🏢 クライアント情報 <span class="pill info">${clientHits.length}件ヒット</span></h3>
+    ${clientHits.map(cl=>{
+      const cs=(STORE.contracts||[]).filter(x=>x.client===cl);
+      const ms=memos.filter(m=>m.client===cl);
+      const total=sum(cs,x=>x.amount);
+      return `<div style="margin-bottom:12px;padding:12px;background:var(--bg);border:1px solid var(--line);border-radius:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center"><b>${escapeHtml(cl)}</b>
+          <span class="muted" style="font-size:12px">契約 ${cs.length}件${total?`・計 ${yen(total)}`:''} ／ メモ ${ms.length}件</span></div>
+        ${cs.map(x=>`<div class="stat-line"><span>📄 ${escapeHtml(x.type||'契約')} <span class="pill ${x.status==='有効'?'ok':'warn'}" style="margin-left:6px">${x.status||''}</span>
+          <span class="muted" style="font-size:11px">　${fmtDate(x.start)}〜${fmtDate(x.end)}</span></span><b>${yen(x.amount)}</b></div>`).join('')}
+      </div>`;}).join('')}</div>`:'';
+  el.innerHTML=`${clientCard}
+    <div class="card"><h3>メモ一覧 <span class="pill muted">${hit.length}件</span></h3>
+    <div style="overflow-x:auto"><table>
+      <thead><tr><th>日付</th><th>クライアント</th><th>タイトル</th><th>参加者</th><th>関連事業</th>${ed?'<th></th>':''}</tr></thead>
+      <tbody>${hit.map(m=>`<tr style="cursor:pointer" onclick="showMemo('${m.id}')">
+        <td>${m.date||'—'}</td><td><b>${escapeHtml(m.client||'—')}</b></td><td>${escapeHtml(m.title||'')}</td>
+        <td class="muted" style="font-size:12px">${escapeHtml(m.attendees||'')}</td><td><span class="muted">${escapeHtml(m.biz||'')}</span></td>
+        ${ed?`<td class="row-actions" onclick="event.stopPropagation()"><button class="icon-btn" onclick="editMemo('${m.id}')">✏️</button><button class="icon-btn" onclick="del('memos','${m.id}')">🗑</button></td>`:''}
+      </tr>`).join('')||`<tr><td colspan="${ed?6:5}"><div class="empty">${q?'検索に一致するメモがありません':'メモがありません。「＋ メモを追加」から記録してください。'}</div></td></tr>`}</tbody>
+    </table></div></div>`;
+}
+function showMemo(id){
+  const m=(STORE.memos||[]).find(z=>z.id===id); if(!m) return;
+  const ed=canEdit('memos');
+  const kv=(k,v)=>`<div class="stat-line"><span class="muted">${k}</span><b>${v}</b></div>`;
+  openModal(escapeHtml(m.title||'打ち合わせメモ'),`
+    ${kv('日付', m.date||'—')}
+    ${kv('クライアント', escapeHtml(m.client||'—'))}
+    ${kv('参加者', escapeHtml(m.attendees||'—'))}
+    ${kv('関連事業', escapeHtml(m.biz||'—'))}
+    <div style="margin-top:12px"><div class="muted" style="font-size:12px;margin-bottom:6px">内容</div>
+      <div style="font-size:13px;line-height:1.8;white-space:pre-wrap">${escapeHtml(m.body||'（内容なし）')}</div></div>`,
+    ed?()=>{ closeModal(); editMemo(id); }:null);
+  const sv=document.getElementById('modal-save');
+  if(ed){ sv.textContent='✏️ 編集する'; sv.style.display=''; } else sv.style.display='none';
+}
+function editMemo(id){
+  const x=(STORE.memos||[]).find(z=>z.id===id)||{date:todayISO(),client:'',title:'',attendees:'',body:'',biz:'全社'};
+  const bizOpts=['全社',...(STORE.businesses||[]).map(z=>z.name)];
+  const clients=memoClients();
+  openModal(id?'メモを編集':'メモを追加',`
+    <div class="field two"><label>日付 / クライアント名（入力候補あり）</label>
+      <input id="mm_date" type="date" value="${x.date||todayISO()}">
+      <input id="mm_client" list="memo-client-list" value="${escapeHtml(x.client||'')}" placeholder="株式会社◯◯">
+      <datalist id="memo-client-list">${clients.map(cl=>`<option value="${escapeHtml(cl)}">`).join('')}</datalist></div>
+    ${field('タイトル','mm_title',escapeHtml(x.title||''))}
+    <div class="field two"><label>参加者 / 関連事業</label>
+      <input id="mm_att" value="${escapeHtml(x.attendees||'')}" placeholder="山田・先方 佐藤様">
+      <select id="mm_biz">${bizOpts.map(o=>`<option${o===x.biz?' selected':''}>${o}</option>`).join('')}</select></div>
+    <div class="field"><label>内容</label><textarea id="mm_body" rows="6" placeholder="決定事項、宿題、次回日程など">${escapeHtml(x.body||'')}</textarea></div>`,
+    ()=>{ if(!fv('mm_title').trim()&&!fv('mm_body').trim()) throw new Error('タイトルか内容を入力してください');
+      return upsert('memos',{id:id||b(),date:fv('mm_date'),client:fv('mm_client').trim(),title:fv('mm_title').trim(),
+        attendees:fv('mm_att').trim(),biz:fv('mm_biz'),body:fv('mm_body')},id); });
+}
 
 // ---- パスワード変更（本人） ----
 function changePassword(){

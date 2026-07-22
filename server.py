@@ -39,12 +39,13 @@ PAGE_COLLECTIONS = {
     "tools":     ["tools"],
     "recruits":  ["recruits"],
     "cashflow":  ["cashflow", "banks", "cftxns"],   # 資金繰り（設定・口座マスタ・入出金明細）
+    "memos":     ["memos", "contracts"],            # 打ち合わせメモ（クライアント検索で契約情報も参照）
 }
 # 各ページが編集できるデータ種別
 PAGE_WRITE = {
     "business": ["businesses"], "sales": ["sales"], "finance": ["finance"],
     "breakeven": ["cost"], "tasks": ["tasks"], "contracts": ["contracts"], "people": ["people"],
-    "tools": ["tools"], "recruits": ["recruits"], "cashflow": ["cashflow", "banks", "cftxns"],
+    "tools": ["tools"], "recruits": ["recruits"], "cashflow": ["cashflow", "banks", "cftxns"], "memos": ["memos"],
     "dashboard": [], "analysis": [],
 }
 ALL_PAGES = list(PAGE_COLLECTIONS.keys())
@@ -378,6 +379,10 @@ def seed_store():
         ],
         "cftxns": [],
         "cashflow": {"opening_balance": 0},
+        "memos": [
+            {"id": gid("m"), "date": days(-3), "client": "取引先A", "title": "定例ミーティング", "attendees": "—", "body": "進捗確認。次回までに追加見積を提出予定。", "biz": "BPO事業"},
+            {"id": gid("m"), "date": days(-10), "client": "取引先C", "title": "SES増員のご相談", "attendees": "—", "body": "エンジニア2名の増員依頼あり。単価と開始時期を調整中。", "biz": "SES事業"},
+        ],
         "tools": [
             {"id": gid("k"), "name": "Slack", "url": "https://slack.com", "category": "コミュニケーション", "icon": "💬"},
             {"id": gid("k"), "name": "Gmail", "url": "https://mail.google.com", "category": "コミュニケーション", "icon": "✉️"},

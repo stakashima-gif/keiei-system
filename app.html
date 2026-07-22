@@ -184,7 +184,7 @@ const PAGES = [
   {id:'business', icon:'🏢', name:'事業管理', title:'事業管理', sub:'事業セグメント別の進捗と採算', sect:'事業・収益'},
   {id:'sales', icon:'💹', name:'売上管理', title:'売上管理', sub:'月次・事業別の売上推移', sect:'事業・収益'},
   {id:'finance', icon:'💰', name:'財務管理', title:'財務管理', sub:'損益計算書（PL）と資金状況', sect:'事業・収益'},
-  {id:'cashflow', icon:'🏦', name:'資金繰り', title:'資金繰り表', sub:'GMOあおぞらネット銀行の入出金明細から自動集計', sect:'事業・収益'},
+  {id:'cashflow', icon:'🏦', name:'資金繰り', title:'資金繰り表', sub:'手入力・CSV取込・銀行API連携の入出金から自動集計', sect:'事業・収益'},
   {id:'tasks', icon:'✅', name:'タスク管理', title:'タスク管理', sub:'全社のタスク進捗と期限管理', sect:'業務'},
   {id:'contracts', icon:'📄', name:'契約管理', title:'契約管理', sub:'契約状況と更新期限のアラート', sect:'業務'},
   {id:'people', icon:'👥', name:'人材管理', title:'人材状況', sub:'人員構成・人件費・評価', sect:'業務'},
@@ -594,7 +594,10 @@ async function renderCashflow(c,p){
     `<input type="month" id="cf-from" value="${cfFrom}" style="margin-right:6px">
      <input type="month" id="cf-to" value="${cfTo}" style="margin-right:6px">
      <button class="btn" onclick="cfReload()">更新</button>`
-    + (ed?` <button class="btn ghost" onclick="cfEditOpening()">✏ 開始残高</button>`:roBadge()));
+    + (ed?` <button class="btn" onclick="editCfTxn()">＋ 入出金</button>
+           <button class="btn ghost" onclick="cfImportCsv()">⬆ CSV取込</button>
+           <button class="btn ghost" onclick="cfBanksModal()">🏦 口座</button>
+           <button class="btn ghost" onclick="cfEditOpening()">✏ 開始残高</button>`:roBadge()));
   c.innerHTML=`<div class="empty">読み込み中…</div>`;
   let d;
   try{ d=await api('GET',`/api/cashflow?from=${cfFrom}&to=${cfTo}`); }
@@ -603,8 +606,8 @@ async function renderCashflow(c,p){
   const last=rows[rows.length-1], first=rows[0];
   const opNet=rows.reduce((a,r)=>a+r.operating_net,0), finNet=rows.reduce((a,r)=>a+r.finance_net,0);
   // データ元バッジ
-  const s=d.source, srcName={mock:'サンプルデータ','mock(fallback)':'サンプル（実データ取得失敗）',sunabar:'sunabar 実データ',production:'本番API 実データ'}[s.source]||s.source;
-  const srcPill=`<span class="pill ${s.source.startsWith('mock')?'warn':'info'}">🏦 データ元: ${srcName}（${s.count}件）</span>`;
+  const s=d.source, srcName={mock:'サンプルデータ',off:'手入力／CSV取込',error:'銀行API 接続エラー',sunabar:'GMOあおぞら(sunabar) 実データ',production:'GMOあおぞら 実データ'}[s.source]||s.source;
+  const srcPill=`<span class="pill ${s.source==='mock'?'warn':s.source==='error'?'bad':'info'}">🏦 データ元: ${srcName}（銀行API ${s.count}件 ／ 手入力・CSV ${s.manual_count||0}件）</span>`;
   const errBanner=s.error?`<div class="alert bad" style="margin-bottom:14px">⚠ ${s.error}<br><span class="muted">環境変数 GMO_ACCESS_TOKEN / GMO_MODE を確認してください。</span></div>`:'';
   // 資金繰り表
   const cell=v=>`<td class="num ${v<0?'down':''}">${yen(v)}</td>`;
@@ -647,7 +650,199 @@ async function renderCashflow(c,p){
     </div><div style="height:16px"></div>
     <div class="card"><h3>資金繰り表</h3><div style="overflow-x:auto">${table}</div>
       <div class="muted" style="margin-top:8px;font-size:12px">※ 摘要のキーワードで自動分類しています。分類は各月の内訳で確認できます。</div>
-      ${details}</div>`;
+      ${details}</div>
+    <div style="height:16px"></div>
+    ${cfTxnListCard(ed)}`;
+}
+
+//==================================================================
+// 資金繰り：入出金明細（手入力／CSV取込）・口座マスタ
+//==================================================================
+const CF_CATS={
+  sales:{label:'売上入金',dir:'in'}, other_in:{label:'その他営業収入',dir:'in'}, finance_in:{label:'財務収入（借入）',dir:'in'},
+  purchase:{label:'仕入・外注',dir:'out'}, payroll:{label:'人件費',dir:'out'}, tax:{label:'税金・社会保険',dir:'out'},
+  expense:{label:'経費・その他',dir:'out'}, finance_out:{label:'財務支出（返済）',dir:'out'}
+};
+function cfBankName(id){ const b=(STORE.banks||[]).find(x=>x.id===id); return b?b.name:'—'; }
+function cfCatLabel(k){ return (CF_CATS[k]||{}).label||'自動分類'; }
+// 入出金明細カード
+function cfTxnListCard(ed){
+  const list=(STORE.cftxns||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const rows=list.map(t=>`<tr>
+    <td>${t.date||'—'}</td>
+    <td>${escapeHtml(t.remarks||'')}</td>
+    <td><span class="muted">${escapeHtml(cfBankName(t.bank))}</span></td>
+    <td><span class="pill muted">${cfCatLabel(t.category)}</span></td>
+    <td><span class="pill ${t.source==='csv'?'info':'muted'}">${t.source==='csv'?'CSV':'手入力'}</span></td>
+    <td class="num ${t.direction==='in'?'up':'down'}"><b>${t.direction==='in'?'＋':'−'}${yen(t.amount)}</b></td>
+    ${ed?`<td class="row-actions"><button class="icon-btn" onclick="editCfTxn('${t.id}')">✏️</button><button class="icon-btn" onclick="del('cftxns','${t.id}')">🗑</button></td>`:''}
+  </tr>`).join('');
+  return `<div class="card"><h3>入出金明細（手入力・CSV取込）<span class="pill muted">${list.length}件</span></h3>
+    <p class="muted" style="font-size:12px;margin:-6px 0 12px">ここに登録した入出金は、上の資金繰り表に自動で合算されます（入出金日はご自身で指定できます）。</p>
+    <div style="overflow-x:auto"><table>
+      <thead><tr><th>入出金日</th><th>摘要</th><th>口座</th><th>科目</th><th>取込元</th><th class="num">金額</th>${ed?'<th></th>':''}</tr></thead>
+      <tbody>${rows||`<tr><td colspan="${ed?7:6}"><div class="empty">明細がありません。「＋ 入出金」または「⬆ CSV取込」で追加してください。</div></td></tr>`}</tbody>
+    </table></div></div>`;
+}
+// 入出金の手入力（追加・編集）
+function editCfTxn(id){
+  const x=(STORE.cftxns||[]).find(z=>z.id===id)||{date:todayISO(),direction:'in',amount:0,category:'',bank:'',remarks:'',source:'manual'};
+  const banks=STORE.banks||[];
+  const bankOpts=['（未指定）',...banks.map(bk=>bk.name)];
+  const curBank=(banks.find(bk=>bk.id===x.bank)||{}).name||'（未指定）';
+  openModal(id?'入出金を編集':'入出金を追加',`
+    <div class="field two"><label>入出金日 / 区分</label>
+      <input id="t_date" type="date" value="${x.date||todayISO()}">
+      <select id="t_dir" onchange="cfSyncCats()">${['入金','出金'].map(o=>`<option${(x.direction==='out'?'出金':'入金')===o?' selected':''}>${o}</option>`).join('')}</select></div>
+    <div class="field two"><label>金額(円) / 科目</label>
+      <input id="t_amt" type="number" value="${x.amount||0}">
+      <select id="t_cat"></select></div>
+    ${selField('口座（銀行）','t_bank',curBank,bankOpts)}
+    ${field('摘要','t_rem',escapeHtml(x.remarks||''))}`,
+    ()=>{
+      const dir=fv('t_dir')==='出金'?'out':'in';
+      const catKey=Object.keys(CF_CATS).find(k=>CF_CATS[k].label===fv('t_cat'))||'';
+      const bank=((STORE.banks||[]).find(bk=>bk.name===fv('t_bank'))||{}).id||'';
+      const amt=Math.abs(fnum('t_amt')); if(!amt) throw new Error('金額を入力してください');
+      if(!fv('t_date')) throw new Error('入出金日を入力してください');
+      return upsert('cftxns',{id:id||b(),date:fv('t_date'),direction:dir,amount:amt,category:catKey,bank,remarks:fv('t_rem'),source:x.source||'manual'},id);
+    });
+  cfSyncCats(x.category);
+}
+function cfSyncCats(preset){
+  const sel=document.getElementById('t_cat'); if(!sel) return;
+  const dir=fv('t_dir')==='出金'?'out':'in';
+  sel.innerHTML=Object.entries(CF_CATS).filter(([k,v])=>v.dir===dir)
+    .map(([k,v])=>`<option${preset===k?' selected':''}>${v.label}</option>`).join('');
+}
+// 口座マスタ
+function cfBanksModal(){
+  const ed=canEdit('cashflow');
+  const list=(STORE.banks||[]).map(bk=>`<div class="stat-line">
+    <span>🏦 <b>${escapeHtml(bk.name)}</b> <span class="muted" style="font-size:11px">${escapeHtml(bk.kind||'')}${bk.api==='gmo'?' ・API連携可':''}</span></span>
+    ${ed?`<span><button class="icon-btn" onclick="editBank('${bk.id}')">✏️</button><button class="icon-btn" onclick="del('banks','${bk.id}').then(()=>cfBanksModal())">🗑</button></span>`:''}
+  </div>`).join('')||'<div class="empty">口座が登録されていません</div>';
+  openModal('口座（銀行）管理',`
+    <div class="alert info" style="margin-top:0">使っている銀行口座を登録します。入出金明細やCSV取込時に、どの口座かを紐づけられます。<br>
+    <b>GMOあおぞらネット銀行</b>はAPI自動連携が可能（要トークン設定）。<b>他行はCSV取込／手入力</b>でご利用ください。</div>
+    ${list}
+    ${ed?`<div style="margin-top:14px"><button class="btn ghost" onclick="editBank()">＋ 口座を追加</button></div>`:''}`, null);
+  document.getElementById('modal-save').style.display='none';
+}
+//---- CSV取込（各銀行の明細CSV／Shift_JIS対応・列マッピング・プレビュー） ----
+function cfCsvParse(text){
+  const rows=[]; let cur=[],val='',q=false;
+  for(let i=0;i<text.length;i++){ const ch=text[i];
+    if(q){ if(ch==='"'){ if(text[i+1]==='"'){val+='"';i++;} else q=false; } else val+=ch; }
+    else if(ch==='"') q=true;
+    else if(ch===','){ cur.push(val); val=''; }
+    else if(ch==='\n'){ cur.push(val); rows.push(cur); cur=[]; val=''; }
+    else if(ch!=='\r') val+=ch;
+  }
+  if(val!==''||cur.length){ cur.push(val); rows.push(cur); }
+  return rows.filter(r=>r.some(c=>String(c).trim()!==''));
+}
+function cfNormDate(s){
+  s=String(s||'').trim();
+  let m=s.match(/(\d{4})[\/\-年.](\d{1,2})[\/\-月.](\d{1,2})/);
+  if(m) return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
+  m=s.match(/^(\d{4})(\d{2})(\d{2})$/); if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+  return '';
+}
+function cfNum(s){ const v=String(s||'').replace(/[^\d]/g,''); return v?parseInt(v,10):0; }
+async function cfReadFile(file){
+  const buf=await file.arrayBuffer();
+  let text=new TextDecoder('utf-8',{fatal:false}).decode(buf);
+  if(/�/.test(text)){ try{ text=new TextDecoder('shift_jis').decode(buf); }catch(e){} } // 日本の銀行CSVはShift_JISが多い
+  return text;
+}
+function cfImportCsv(){
+  const banks=STORE.banks||[];
+  openModal('CSV取込（銀行明細）',`
+    <div class="alert info" style="margin-top:0">各銀行のネットバンキングからダウンロードした<b>入出金明細CSV</b>を取り込みます（Shift_JISもOK）。<br>
+    列を選ぶ → プレビューで確認 → 取込、の順です。取込後も各明細は編集できます。</div>
+    <div class="field"><label>① CSVファイルを選択</label>
+      <input id="imp_file" type="file" accept=".csv,text/csv" onchange="cfCsvFile(this.files&&this.files[0])"></div>
+    <div id="imp_map"></div>
+    <div id="imp_prev"></div>`,
+    async()=>{ await cfDoImport(); });
+  document.getElementById('modal-save').textContent='取り込む';
+}
+async function cfCsvFile(file){
+  if(!file) return;
+  const el=document.getElementById('imp_map');
+  try{
+    const rows=cfCsvParse(await cfReadFile(file));
+    if(rows.length<2){ el.innerHTML='<div class="alert bad">データ行が見つかりませんでした</div>'; return; }
+    window._cfRows=rows;
+    const head=rows[0].map(h=>String(h).trim());
+    const find=(...kw)=>{ const i=head.findIndex(h=>kw.some(k=>h.includes(k))); return i<0?'':head[i]; };
+    const opts=v=>['（なし）',...head].map(h=>`<option${h===v?' selected':''}>${h}</option>`).join('');
+    const banks=STORE.banks||[];
+    el.innerHTML=`
+      <div class="field two"><label>② 列の対応（日付 / 摘要）</label>
+        <select id="m_date" onchange="cfCsvPreview()">${opts(find('日付','取引日','年月日'))}</select>
+        <select id="m_rem" onchange="cfCsvPreview()">${opts(find('摘要','内容','お取引内容','備考'))}</select></div>
+      <div class="field two"><label>入金列 / 出金列</label>
+        <select id="m_in" onchange="cfCsvPreview()">${opts(find('お預入れ','預入','入金'))}</select>
+        <select id="m_out" onchange="cfCsvPreview()">${opts(find('お引出し','引出','出金','支払'))}</select></div>
+      <div class="field two"><label>取込先の口座 / 日付を一括指定（任意・CSVに日付が無い場合）</label>
+        <select id="imp_bank">${['（未指定）',...banks.map(b=>b.name)].map(o=>`<option>${o}</option>`).join('')}</select>
+        <input id="imp_fixdate" type="date" onchange="cfCsvPreview()"></div>`;
+    cfCsvPreview();
+  }catch(e){ el.innerHTML=`<div class="alert bad">CSVの読み込みに失敗しました: ${escapeHtml(e.message)}</div>`; }
+}
+function cfCsvPreview(){
+  const rows=window._cfRows||[]; const pv=document.getElementById('imp_prev'); if(!rows.length||!pv) return;
+  const head=rows[0].map(h=>String(h).trim());
+  const ix=id=>{ const v=fv(id); return v==='（なし）'?-1:head.indexOf(v); };
+  const di=ix('m_date'), ri=ix('m_rem'), ii=ix('m_in'), oi=ix('m_out');
+  const fixed=fv('imp_fixdate');
+  const out=[];
+  for(let r=1;r<rows.length;r++){
+    const row=rows[r];
+    const inAmt=ii>=0?cfNum(row[ii]):0, outAmt=oi>=0?cfNum(row[oi]):0;
+    if(!inAmt && !outAmt) continue;
+    const date=fixed||(di>=0?cfNormDate(row[di]):'');
+    out.push({date, remarks:(ri>=0?String(row[ri]||'').trim():''),
+      direction:inAmt?'in':'out', amount:inAmt||outAmt});
+  }
+  window._cfPreview=out;
+  const noDate=out.filter(o=>!o.date).length;
+  pv.innerHTML=`
+    <div class="alert ${out.length?(noDate?'warn':'ok'):'bad'}" style="margin-top:6px">
+      ${out.length?`${out.length}件を取り込めます。`:'取り込める明細がありません（入金列／出金列の指定を確認してください）。'}
+      ${noDate?`<br>⚠ ${noDate}件で日付が読み取れません。「日付を一括指定」で日付を入れるか、取込後に各明細を編集してください。`:''}
+    </div>
+    ${out.length?`<div style="max-height:180px;overflow:auto;border:1px solid var(--line);border-radius:8px">
+      <table><thead><tr><th>入出金日</th><th>摘要</th><th class="num">金額</th></tr></thead><tbody>
+      ${out.slice(0,30).map(o=>`<tr><td class="${o.date?'':'down'}">${o.date||'未設定'}</td><td>${escapeHtml(o.remarks)}</td>
+        <td class="num ${o.direction==='in'?'up':'down'}">${o.direction==='in'?'＋':'−'}${yen(o.amount)}</td></tr>`).join('')}
+      </tbody></table>${out.length>30?`<div class="muted" style="padding:6px;font-size:12px">…ほか${out.length-30}件</div>`:''}</div>`:''}`;
+}
+async function cfDoImport(){
+  const list=window._cfPreview||[];
+  if(!list.length) throw new Error('取り込む明細がありません。CSVを選び、入金／出金の列を指定してください。');
+  const bank=((STORE.banks||[]).find(b2=>b2.name===fv('imp_bank'))||{}).id||'';
+  await loadStore();  // 最新を取得してから追記（他の人の入力を消さない）
+  const add=list.map(o=>({id:b(),date:o.date,direction:o.direction,amount:o.amount,
+    category:'',bank,remarks:o.remarks,source:'csv'}));
+  STORE.cftxns=[...(STORE.cftxns||[]),...add];
+  await persist('cftxns');
+  window._cfRows=null; window._cfPreview=null;
+  closeModal(); render();
+  alert(`${add.length}件を取り込みました。資金繰り表に反映されています。`);
+}
+function editBank(id){
+  const x=(STORE.banks||[]).find(z=>z.id===id)||{name:'',kind:'普通',api:'',note:''};
+  openModal(id?'口座を編集':'口座を追加',
+    `${field('銀行・口座名','bk_name',escapeHtml(x.name||''))}
+     ${selField('口座種別','bk_kind',x.kind||'普通',['普通','当座','定期','その他'])}
+     ${selField('API自動連携','bk_api',x.api==='gmo'?'GMOあおぞら（API可）':'なし（CSV／手入力）',['なし（CSV／手入力）','GMOあおぞら（API可）'])}
+     ${field('メモ','bk_note',escapeHtml(x.note||''))}`,
+    ()=>{ if(!fv('bk_name').trim()) throw new Error('銀行・口座名を入力してください');
+      return upsert('banks',{id:id||b(),name:fv('bk_name').trim(),kind:fv('bk_kind'),
+        api:fv('bk_api').startsWith('GMO')?'gmo':'',note:fv('bk_note')},id); });
 }
 
 // ---- タスク管理 ----

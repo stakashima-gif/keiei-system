@@ -38,13 +38,13 @@ PAGE_COLLECTIONS = {
     "people":    ["people", "businesses"],
     "tools":     ["tools"],
     "recruits":  ["recruits"],
-    "cashflow":  ["cashflow"],   # 資金繰り（開始残高などの設定を保存）
+    "cashflow":  ["cashflow", "banks", "cftxns"],   # 資金繰り（設定・口座マスタ・入出金明細）
 }
 # 各ページが編集できるデータ種別
 PAGE_WRITE = {
     "business": ["businesses"], "sales": ["sales"], "finance": ["finance"],
     "breakeven": ["cost"], "tasks": ["tasks"], "contracts": ["contracts"], "people": ["people"],
-    "tools": ["tools"], "recruits": ["recruits"], "cashflow": ["cashflow"],
+    "tools": ["tools"], "recruits": ["recruits"], "cashflow": ["cashflow", "banks", "cftxns"],
     "dashboard": [], "analysis": [],
 }
 ALL_PAGES = list(PAGE_COLLECTIONS.keys())
@@ -86,7 +86,7 @@ CF_RULES = {
 
 def cf_bank_config():
     return {
-        "mode": os.environ.get("GMO_MODE", "mock"),
+        "mode": os.environ.get("GMO_MODE", "off"),
         "base_url": os.environ.get("GMO_BASE_URL", "https://api.sunabar.gmo-aozora.com"),
         "account_type": os.environ.get("GMO_ACCOUNT_TYPE", "corporation"),
         "access_token": os.environ.get("GMO_ACCESS_TOKEN", ""),
@@ -96,7 +96,7 @@ def cf_bank_config():
 
 
 def cf_get_transactions(date_from, date_to):
-    """正規化済みの明細リストとデータ元情報を返す。"""
+    """銀行API（GMOあおぞら）から取得した明細を返す。mode=off なら取得しない（=手入力/CSVのみ運用）。"""
     cfg = cf_bank_config()
     mode = cfg["mode"]
     if mode in ("sunabar", "production"):
@@ -105,11 +105,13 @@ def cf_get_transactions(date_from, date_to):
             txns = [t for t in (cf_normalize(x) for x in raw) if t]
             return txns, {"source": mode, "count": len(txns), "error": None}
         except Exception as e:
-            txns = cf_mock(date_from, date_to)
-            return txns, {"source": "mock(fallback)", "count": len(txns),
-                          "error": "実データ取得に失敗したためサンプル表示中: %s" % e}
-    txns = cf_mock(date_from, date_to)
-    return txns, {"source": "mock", "count": len(txns), "error": None}
+            return [], {"source": "error", "count": 0,
+                        "error": "GMOあおぞらからの取得に失敗しました: %s" % e}
+    if mode == "mock":
+        txns = cf_mock(date_from, date_to)
+        return txns, {"source": "mock", "count": len(txns), "error": None}
+    # off（既定）: 銀行APIは使わず、手入力/CSV取込の明細だけで集計する
+    return [], {"source": "off", "count": 0, "error": None}
 
 
 def cf_fetch_bank(cfg, date_from, date_to):
@@ -215,6 +217,10 @@ def cf_to_int(v):
 
 
 def cf_classify(txn):
+    # 手入力/CSV取込で科目が明示されていればそれを優先
+    cat = txn.get("category")
+    if cat in CF_CATEGORIES:
+        return cat
     remarks = txn.get("remarks", "")
     direction = txn.get("direction", "in")
     for rule in CF_RULES.get(direction, []):
@@ -365,6 +371,13 @@ def seed_store():
             {"id": gid("p"), "name": "—", "role": "エンジニア", "biz": "SES事業", "type": "正社員", "cost": 650000, "joined": "2021-09-01", "rating": "A"},
             {"id": gid("p"), "name": "—", "role": "マネージャー", "biz": "ライバー事業", "type": "正社員", "cost": 550000, "joined": "2024-01-01", "rating": "B"},
         ],
+        # 資金繰り：口座マスタ（銀行）と入出金明細（手入力／CSV取込）
+        "banks": [
+            {"id": gid("bk"), "name": "GMOあおぞらネット銀行", "kind": "普通", "api": "gmo", "note": "API自動連携（要トークン設定）"},
+            {"id": gid("bk"), "name": "メインバンク（例）", "kind": "普通", "api": "", "note": "CSV取込／手入力"},
+        ],
+        "cftxns": [],
+        "cashflow": {"opening_balance": 0},
         "tools": [
             {"id": gid("k"), "name": "Slack", "url": "https://slack.com", "category": "コミュニケーション", "icon": "💬"},
             {"id": gid("k"), "name": "Gmail", "url": "https://mail.google.com", "category": "コミュニケーション", "icon": "✉️"},
@@ -725,9 +738,30 @@ class Handler(BaseHTTPRequestHandler):
             date_to += "-28"
         with LOCK:
             settings = DB["store"].get("cashflow") or {}
-        opening = settings.get("opening_balance", 3000000)
+            stored = list(DB["store"].get("cftxns") or [])
+        opening = settings.get("opening_balance", 0)
         try:
-            txns, source = cf_get_transactions(date_from, date_to)
+            api_txns, source = cf_get_transactions(date_from, date_to)
+            # 手入力／CSV取込の明細（期間内のみ）を銀行APIの明細に合算する
+            manual = []
+            for t in stored:
+                d = (t.get("date") or "")[:10]
+                if not d or d < date_from or d > date_to:
+                    continue
+                try:
+                    amt = abs(int(float(t.get("amount") or 0)))
+                except (TypeError, ValueError):
+                    continue
+                if amt <= 0:
+                    continue
+                manual.append({"date": d, "amount": amt,
+                               "direction": "out" if t.get("direction") == "out" else "in",
+                               "remarks": t.get("remarks") or "",
+                               "category": t.get("category"),
+                               "bank": t.get("bank") or "",
+                               "source": t.get("source") or "manual"})
+            txns = api_txns + manual
+            source = {**source, "manual_count": len(manual), "total_count": len(txns)}
             months = cf_month_range(date_from, date_to)
             cf = cf_build(txns, months, opening)
             self._json(200, {"ok": True, "source": source,

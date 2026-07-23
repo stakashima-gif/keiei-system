@@ -540,16 +540,27 @@ function renderFinance(c,p){
         ${donut([{label:'売上原価',value:y.cogs,color:'#ef4444'},{label:'販管費',value:y.sga,color:'#f59e0b'},{label:'営業利益',value:Math.max(y.op,0),color:'#22c55e'}])}
         ${legendList([{label:'売上原価',value:y.cogs,color:'#ef4444'},{label:'販管費',value:y.sga,color:'#f59e0b'},{label:'営業利益',value:Math.max(y.op,0),color:'#22c55e'}])}
       </div></div><div style="height:16px"></div>
-    <div class="card"><h3>損益計算書（月次）</h3><table>
-    <thead><tr><th>月</th><th class="num">売上高</th><th class="num">売上原価</th><th class="num">売上総利益</th><th class="num">販管費</th><th class="num">営業利益</th></tr></thead>
-    <tbody>${f.map((x,i)=>`<tr><td>${months[i]}</td><td class="num">${yen(salesTotal(i))}</td><td class="num">${yen(x.cogs)}</td><td class="num">${yen(salesTotal(i)-x.cogs)}</td><td class="num">${yen(x.sga)}</td><td class="num ${monthOp(i)>=0?'up':'down'}"><b>${yen(monthOp(i))}</b></td></tr>`).join('')}
-    <tr style="border-top:2px solid var(--line)"><td><b>合計</b></td><td class="num"><b>${yen(y.rev)}</b></td><td class="num"><b>${yen(y.cogs)}</b></td><td class="num"><b>${yen(y.rev-y.cogs)}</b></td><td class="num"><b>${yen(y.sga)}</b></td><td class="num"><b>${yen(y.op)}</b></td></tr>
-    </tbody></table></div>
-    ${detailMonth>=0?`<div style="height:16px"></div><div class="card"><h3>販管費の内訳 <span class="pill info">${months[detailMonth]}（試算表取込）</span></h3>
-      <table><thead><tr><th>科目</th><th class="num">金額</th></tr></thead><tbody>
-      ${f[detailMonth].sgaItems.map(it=>`<tr><td>${it.name}</td><td class="num">${yen(it.amount)}</td></tr>`).join('')}
-      <tr style="border-top:2px solid var(--line)"><td><b>合計</b></td><td class="num"><b>${yen(sum(f[detailMonth].sgaItems,it=>it.amount))}</b></td></tr>
-      </tbody></table></div>`:''}`;
+    ${(()=>{
+      const hasTb=f.some(x=>x&&x.tbRevenue);
+      const tbCol=hasTb?`<th class="num">試算表売上(参考)</th>`:'';
+      return `<div class="card"><h3>損益計算書（月次）</h3><div style="overflow-x:auto"><table>
+      <thead><tr><th>月</th><th class="num">売上高</th>${tbCol}<th class="num">売上原価</th><th class="num">売上総利益</th><th class="num">販管費</th><th class="num">営業利益</th></tr></thead>
+      <tbody>${f.map((x,i)=>`<tr><td>${months[i]}</td><td class="num">${yen(salesTotal(i))}</td>${hasTb?`<td class="num muted">${x.tbRevenue?yen(x.tbRevenue):'—'}</td>`:''}<td class="num">${yen(x.cogs)}</td><td class="num">${yen(salesTotal(i)-x.cogs)}</td><td class="num">${yen(x.sga)}</td><td class="num ${monthOp(i)>=0?'up':'down'}"><b>${yen(monthOp(i))}</b></td></tr>`).join('')}
+      <tr style="border-top:2px solid var(--line)"><td><b>合計</b></td><td class="num"><b>${yen(y.rev)}</b></td>${hasTb?`<td class="num muted"><b>${yen(sum(f,x=>x.tbRevenue||0))}</b></td>`:''}<td class="num"><b>${yen(y.cogs)}</b></td><td class="num"><b>${yen(y.rev-y.cogs)}</b></td><td class="num"><b>${yen(y.sga)}</b></td><td class="num"><b>${yen(y.op)}</b></td></tr>
+      </tbody></table></div>
+      ${hasTb?`<p class="muted" style="font-size:12px;margin:8px 0 0">※「試算表売上(参考)」は税理士の試算表の売上高です。ダッシュボード等の売上は「売上管理」（事業別入力）に連動します。両者が合うように売上管理へ入力してください。</p>`:''}</div>`;
+    })()}
+    ${(()=>{
+      const mlist=f.map((x,i)=>({i,items:(x&&x.sgaItems)||[]})).filter(m=>m.items.length);
+      if(!mlist.length) return '';
+      return `<div style="height:16px"></div><div class="card"><h3>販管費の内訳 <span class="pill info">試算表取込（${mlist.length}ヶ月分）</span></h3>
+        ${mlist.map((m,idx)=>`<details ${idx===mlist.length-1?'open':''} style="margin-top:8px">
+          <summary style="cursor:pointer;color:var(--accent);font-weight:600">${months[m.i]}（${m.items.length}科目・計 ${yen(sum(m.items,it=>it.amount))}）</summary>
+          <table style="margin-top:8px"><thead><tr><th>科目</th><th class="num">金額</th></tr></thead><tbody>
+          ${m.items.map(it=>`<tr><td>${escapeHtml(it.name)}</td><td class="num ${it.amount<0?'down':''}">${yen(it.amount)}</td></tr>`).join('')}
+          <tr style="border-top:2px solid var(--line)"><td><b>合計</b></td><td class="num"><b>${yen(sum(m.items,it=>it.amount))}</b></td></tr>
+          </tbody></table></details>`).join('')}</div>`;
+    })()}`;
 }
 
 // ---- 資金繰り（GMOあおぞらネット銀行 連携）----
@@ -1056,24 +1067,64 @@ function parseTrialBalance(text){
 function importTrialBalance(){
   const monthOpts=months.map((m,i)=>`<option value="${i}">${m}</option>`).join('');
   openModal('試算表の取り込み（PDF）',`
-    <div class="alert info" style="margin-top:0">税理士から届いた<b>PDFファイルをそのまま選択</b>すると、中の文字を自動で読み取り、売上高・売上原価・販管費（と内訳）を抽出します。読み取り後に金額を確認・修正してから保存してください。</div>
-    <div class="field"><label>対象月</label><select id="tb_month">${monthOpts}</select></div>
+    <div class="alert info" style="margin-top:0">税理士から届いた<b>PDFファイルをそのまま選択</b>してください。<b>年間推移形式（4月度〜3月度の月別）</b>にも<b>単月形式</b>にも対応。読み取った各月の売上原価・販管費（内訳含む）を財務データに一括反映します。</div>
     <div class="field"><label>① PDFファイルを選択</label><input id="tb_file" type="file" accept="application/pdf,.pdf" onchange="handleTBFile(this.files&&this.files[0])"></div>
     <div id="tb_pdfstatus" class="muted" style="font-size:12px;margin:-6px 0 12px"></div>
-    <details style="margin-bottom:12px"><summary class="muted" style="font-size:12px;cursor:pointer">うまく読めない場合：テキストを貼り付けて読み取る</summary>
-      <div class="field" style="margin-top:10px"><textarea id="tb_text" rows="6" placeholder="PDFの文字をコピーして貼り付け…"></textarea></div>
+    <details style="margin-bottom:12px"><summary class="muted" style="font-size:12px;cursor:pointer">うまく読めない場合：テキストを貼り付けて読み取る／単月形式の対象月指定</summary>
+      <div class="field" style="margin-top:10px"><label>対象月（単月形式のときだけ使用）</label><select id="tb_month">${monthOpts}</select></div>
+      <div class="field"><textarea id="tb_text" rows="6" placeholder="PDFの文字をコピーして貼り付け…"></textarea></div>
       <button class="btn ghost sm" onclick="runTBParse()">🔍 貼り付けたテキストを読み取る</button>
     </details>
     <div id="tb_result" style="margin-top:6px"></div>`,
     async()=>{
-      if(!window._tbParsed){ alert('先に「読み取る」を押して内容を確認してください'); throw new Error('未読み取り'); }
+      const f=STORE.finance||[];
+      if(window._tbAnnual){
+        // 年間推移形式：検出した各月をまとめて反映
+        const a=window._tbAnnual; const FY=[4,5,6,7,8,9,10,11,12,1,2,3]; let applied=0;
+        for(let j=0;j<12;j++){
+          const rev=(a.revenue||[])[j]||0, co=(a.cogs||[])[j]||0, sg=(a.sga||[])[j]||0;
+          if(!rev&&!co&&!sg) continue;
+          const mi=FY[j]-1;
+          const sgaItems=(a.items||[]).map(it=>({name:it.label,amount:it.months[j]||0})).filter(it=>it.amount!==0);
+          f[mi]=Object.assign({},f[mi]||{},{month:mi,cogs:Math.abs(co),sga:sg,sgaItems,tbRevenue:rev});
+          applied++;
+        }
+        if(!applied) throw new Error('反映できる月がありません');
+        STORE.finance=f; await persist('finance'); window._tbAnnual=null; window._tbParsed=null; closeModal(); render();
+        alert(applied+'ヶ月分を財務データに反映しました');
+        return;
+      }
+      if(!window._tbParsed){ alert('先にPDFを選択（または「読み取る」）してください'); throw new Error('未読み取り'); }
       const i=Number(fv('tb_month'));
       const co=fnum('tb_cogs'), sg=fnum('tb_sga');
-      const f=STORE.finance||[];
       const items=(window._tbParsed.sgaItems||[]);
-      f[i]=Object.assign({},f[i]||{},{month:i,cogs:co,sga:sg,sgaItems:items});
+      f[i]=Object.assign({},f[i]||{},{month:i,cogs:co,sga:sg,sgaItems:items,tbRevenue:fnum('tb_rev')||undefined});
       STORE.finance=f; await persist('finance'); window._tbParsed=null; closeModal(); render();
     });
+}
+// 年間推移形式（勘定科目 × 4月度〜3月度）の解析
+function parseTrialBalanceAnnual(text){
+  const lines=text.split(/\r?\n/);
+  const rows=[];
+  for(const line of lines){
+    const nums=(line.match(/-?\d[\d,]*/g)||[]).map(s=>parseInt(s.replace(/,/g,''),10)).filter(n=>!isNaN(n));
+    if(nums.length<13) continue;                       // 12ヶ月＋決算仕訳＋当期合計 の行だけ
+    const label=line.replace(/-?\d[\d,]*/g,'').replace(/[\s　]/g,'');
+    if(!label||label.includes('月度')) continue;
+    rows.push({label, months:nums.slice(0,12)});
+  }
+  if(rows.length<3) return null;
+  const find=(...pats)=>rows.find(r=>pats.some(p=>r.label.includes(p)));
+  const revenue=find('売上高合計')||rows.find(r=>r.label==='売上高');
+  const cogs=rows.find(r=>r.label==='売上原価')||find('売上原価');
+  const sgaTotal=find('販売管理費計','販売費及び一般管理費合計','販売管理費合計','販管費合計','販売費及一般管理費');
+  if(!revenue&&!cogs&&!sgaTotal) return null;
+  // 販管費の内訳＝売上総損益の次の行 〜 販売管理費計の手前
+  let items=[];
+  const gi=rows.findIndex(r=>r.label.includes('売上総損益')||r.label.includes('売上総利益'));
+  const si=sgaTotal?rows.indexOf(sgaTotal):-1;
+  if(gi>=0&&si>gi) items=rows.slice(gi+1,si);
+  return {revenue:revenue?revenue.months:null, cogs:cogs?cogs.months:null, sga:sgaTotal?sgaTotal.months:null, items};
 }
 async function handleTBFile(file){
   if(!file) return;
@@ -1100,9 +1151,32 @@ async function handleTBFile(file){
   }catch(e){ st.innerHTML='<span class="down">PDFの読み取りに失敗しました（'+e.message+'）。テキスト貼り付けをお試しください。</span>'; }
 }
 function runTBParse(){
-  const r=parseTrialBalance(fv('tb_text')); window._tbParsed=r;
-  document.getElementById('tb_result').innerHTML=`
-    <div class="alert ${(r.revenue||r.cogs||r.sga)?'ok':'warn'}">${(r.revenue||r.cogs||r.sga)?'読み取りました。金額を確認・修正して「保存」を押してください。':'うまく読み取れませんでした。下の欄に手入力でも保存できます。'}</div>
+  const text=fv('tb_text');
+  const out=document.getElementById('tb_result');
+  // ① まず年間推移形式を試す（4月度〜3月度の月別列）
+  const a=parseTrialBalanceAnnual(text);
+  if(a){
+    window._tbAnnual=a; window._tbParsed=null;
+    const FY=[4,5,6,7,8,9,10,11,12,1,2,3];
+    const rowsHtml=FY.map((m,j)=>{
+      const rev=(a.revenue||[])[j]||0, co=(a.cogs||[])[j]||0, sg=(a.sga||[])[j]||0;
+      if(!rev&&!co&&!sg) return '';
+      return `<tr><td>${m}月</td><td class="num muted">${yen(rev)}</td><td class="num">${yen(co)}</td><td class="num">${yen(sg)}</td><td class="num ${rev-co-sg>=0?'up':'down'}">${yen(rev-co-sg)}</td></tr>`;
+    }).join('');
+    const cnt=FY.filter((m,j)=>((a.revenue||[])[j]||0)||((a.cogs||[])[j]||0)||((a.sga||[])[j]||0)).length;
+    out.innerHTML=`
+      <div class="alert ok">📅 <b>年間推移形式</b>を検出しました。データのある <b>${cnt}ヶ月分</b> をまとめて反映します（「保存」で確定）。</div>
+      <div style="max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:8px">
+        <table><thead><tr><th>月</th><th class="num">売上高(参考)</th><th class="num">売上原価</th><th class="num">販管費</th><th class="num">営業損益</th></tr></thead>
+        <tbody>${rowsHtml}</tbody></table></div>
+      ${a.items&&a.items.length?`<p class="muted" style="font-size:12px;margin:8px 0 0">販管費の内訳 ${a.items.length}科目（${a.items.slice(0,6).map(it=>it.label).join('・')}${a.items.length>6?' ほか':''}）も各月に保存されます。</p>`:''}
+      <p class="muted" style="font-size:12px;margin:6px 0 0">※ 売上高は参考表示です。ダッシュボード等の売上は「売上管理」（事業別入力）から連動します。</p>`;
+    return;
+  }
+  // ② 単月形式
+  const r=parseTrialBalance(text); window._tbParsed=r; window._tbAnnual=null;
+  out.innerHTML=`
+    <div class="alert ${(r.revenue||r.cogs||r.sga)?'ok':'warn'}">${(r.revenue||r.cogs||r.sga)?'単月形式として読み取りました。対象月を確認し、金額を確認・修正して「保存」を押してください。':'うまく読み取れませんでした。下の欄に手入力でも保存できます。'}</div>
     <div class="field two"><label>売上高（参考・反映されません ※売上は売上管理から） / 売上原価（反映）</label><input id="tb_rev" type="number" value="${r.revenue||0}" disabled style="opacity:.5"><input id="tb_cogs" type="number" value="${r.cogs||0}"></div>
     <div class="field"><label>販管費 合計（反映）</label><input id="tb_sga" type="number" value="${r.sga||0}"></div>
     ${r.sgaItems&&r.sgaItems.length?`<div class="field"><label>販管費の内訳（${r.sgaItems.length}件を検出）</label>

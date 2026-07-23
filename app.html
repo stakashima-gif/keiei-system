@@ -1411,7 +1411,7 @@ function memoRenderBody(){
   const ed=canEdit('memos');
   const memos=(STORE.memos||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const q=memoQ.trim().toLowerCase();
-  const hit=q?memos.filter(m=>((m.client||'')+' '+(m.title||'')+' '+(m.body||'')+' '+(m.attendees||'')).toLowerCase().includes(q)):memos;
+  const hit=q?memos.filter(m=>((m.client||'')+' '+(m.title||'')+' '+(m.body||'')+' '+(m.content||'')+' '+(m.background||'')+' '+(m.nextAction||'')+' '+(m.via||'')+' '+(m.attendees||'')).toLowerCase().includes(q)):memos;
   // クライアント情報（契約＋メモ件数）— 検索時に表示
   const clientHits=q?memoClients().filter(cl=>cl.toLowerCase().includes(q)):[];
   const clientCard=clientHits.length?`<div class="card" style="margin-bottom:16px"><h3>🏢 クライアント情報 <span class="pill info">${clientHits.length}件ヒット</span></h3>
@@ -1428,31 +1428,40 @@ function memoRenderBody(){
   el.innerHTML=`${clientCard}
     <div class="card"><h3>メモ一覧 <span class="pill muted">${hit.length}件</span></h3>
     <div style="overflow-x:auto"><table>
-      <thead><tr><th>日付</th><th>クライアント</th><th>タイトル</th><th>参加者</th><th>関連事業</th>${ed?'<th></th>':''}</tr></thead>
+      <thead><tr><th>日付</th><th>クライアント</th><th>タイトル</th><th>経由</th><th>次回アクション</th><th>議事録</th>${ed?'<th></th>':''}</tr></thead>
       <tbody>${hit.map(m=>`<tr style="cursor:pointer" onclick="showMemo('${m.id}')">
         <td>${m.date||'—'}</td><td><b>${escapeHtml(m.client||'—')}</b></td><td>${escapeHtml(m.title||'')}</td>
-        <td class="muted" style="font-size:12px">${escapeHtml(m.attendees||'')}</td><td><span class="muted">${escapeHtml(m.biz||'')}</span></td>
+        <td><span class="muted" style="font-size:12px">${escapeHtml(m.via||'—')}</span></td>
+        <td class="muted" style="font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(m.nextAction||'')}</td>
+        <td onclick="event.stopPropagation()">${m.minutesUrl?`<a href="${escapeHtml(m.minutesUrl)}" target="_blank" rel="noopener" title="議事録を開く" style="color:var(--accent);text-decoration:none">📋 開く</a>`:'<span class="muted">—</span>'}</td>
         ${ed?`<td class="row-actions" onclick="event.stopPropagation()"><button class="icon-btn" onclick="editMemo('${m.id}')">✏️</button><button class="icon-btn" onclick="del('memos','${m.id}')">🗑</button></td>`:''}
-      </tr>`).join('')||`<tr><td colspan="${ed?6:5}"><div class="empty">${q?'検索に一致するメモがありません':'メモがありません。「＋ メモを追加」から記録してください。'}</div></td></tr>`}</tbody>
+      </tr>`).join('')||`<tr><td colspan="${ed?7:6}"><div class="empty">${q?'検索に一致するメモがありません':'メモがありません。「＋ メモを追加」から記録してください。'}</div></td></tr>`}</tbody>
     </table></div></div>`;
 }
 function showMemo(id){
   const m=(STORE.memos||[]).find(z=>z.id===id); if(!m) return;
   const ed=canEdit('memos');
   const kv=(k,v)=>`<div class="stat-line"><span class="muted">${k}</span><b>${v}</b></div>`;
+  const sec=(label,text)=>text?`<div style="margin-top:12px"><div class="muted" style="font-size:12px;margin-bottom:4px">${label}</div>
+      <div style="font-size:13px;line-height:1.8;white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px">${escapeHtml(text)}</div></div>`:'';
+  const content=m.content!==undefined?m.content:(m.body||'');  // 旧データ互換
   openModal(escapeHtml(m.title||'打ち合わせメモ'),`
     ${kv('日付', m.date||'—')}
     ${kv('クライアント', escapeHtml(m.client||'—'))}
     ${kv('参加者', escapeHtml(m.attendees||'—'))}
+    ${kv('経由', escapeHtml(m.via||'—'))}
     ${kv('関連事業', escapeHtml(m.biz||'—'))}
-    <div style="margin-top:12px"><div class="muted" style="font-size:12px;margin-bottom:6px">内容</div>
-      <div style="font-size:13px;line-height:1.8;white-space:pre-wrap">${escapeHtml(m.body||'（内容なし）')}</div></div>`,
+    ${m.minutesUrl?kv('議事録', `<a href="${escapeHtml(m.minutesUrl)}" target="_blank" rel="noopener" style="color:var(--accent)">📋 議事録を開く ↗</a>`):''}
+    ${sec('打ち合わせ背景', m.background)}
+    ${sec('内容', content)}
+    ${sec('次回アクション', m.nextAction)}`,
     ed?()=>{ closeModal(); editMemo(id); }:null);
   const sv=document.getElementById('modal-save');
   if(ed){ sv.textContent='✏️ 編集する'; sv.style.display=''; } else sv.style.display='none';
 }
 function editMemo(id){
-  const x=(STORE.memos||[]).find(z=>z.id===id)||{date:todayISO(),client:'',title:'',attendees:'',body:'',biz:'全社'};
+  const x=(STORE.memos||[]).find(z=>z.id===id)||{date:todayISO(),client:'',title:'',attendees:'',via:'',background:'',content:'',nextAction:'',minutesUrl:'',biz:'全社'};
+  const content=x.content!==undefined?x.content:(x.body||'');  // 旧データ互換
   const bizOpts=['全社',...(STORE.businesses||[]).map(z=>z.name)];
   const clients=memoClients();
   openModal(id?'メモを編集':'メモを追加',`
@@ -1464,10 +1473,18 @@ function editMemo(id){
     <div class="field two"><label>参加者 / 関連事業</label>
       <input id="mm_att" value="${escapeHtml(x.attendees||'')}" placeholder="山田・先方 佐藤様">
       <select id="mm_biz">${bizOpts.map(o=>`<option${o===x.biz?' selected':''}>${o}</option>`).join('')}</select></div>
-    <div class="field"><label>内容</label><textarea id="mm_body" rows="6" placeholder="決定事項、宿題、次回日程など">${escapeHtml(x.body||'')}</textarea></div>`,
-    ()=>{ if(!fv('mm_title').trim()&&!fv('mm_body').trim()) throw new Error('タイトルか内容を入力してください');
+    <div class="field"><label>経由（どこから来た案件か）</label>
+      <input id="mm_via" list="memo-via-list" value="${escapeHtml(x.via||'')}" placeholder="紹介 / 問い合わせ / 既存取引 など">
+      <datalist id="memo-via-list">${['紹介','問い合わせ','既存取引','展示会・イベント','テレアポ','Web広告','その他'].map(v=>`<option value="${v}">`).join('')}</datalist></div>
+    <div class="field"><label>打ち合わせ背景</label><textarea id="mm_bg" rows="2" placeholder="この打ち合わせに至った経緯・目的">${escapeHtml(x.background||'')}</textarea></div>
+    <div class="field"><label>内容</label><textarea id="mm_content" rows="4" placeholder="話した内容・決定事項">${escapeHtml(content)}</textarea></div>
+    <div class="field"><label>次回アクション</label><textarea id="mm_next" rows="2" placeholder="誰が・何を・いつまでに">${escapeHtml(x.nextAction||'')}</textarea></div>
+    <div class="field"><label>議事録ツールURL（Frictio等のリンクを貼り付け）</label>
+      <input id="mm_url" type="url" value="${escapeHtml(x.minutesUrl||'')}" placeholder="https://app.frictio.ai/ws/..."></div>`,
+    ()=>{ if(!fv('mm_title').trim()&&!fv('mm_content').trim()) throw new Error('タイトルか内容を入力してください');
       return upsert('memos',{id:id||b(),date:fv('mm_date'),client:fv('mm_client').trim(),title:fv('mm_title').trim(),
-        attendees:fv('mm_att').trim(),biz:fv('mm_biz'),body:fv('mm_body')},id); });
+        attendees:fv('mm_att').trim(),biz:fv('mm_biz'),via:fv('mm_via').trim(),background:fv('mm_bg'),
+        content:fv('mm_content'),nextAction:fv('mm_next'),minutesUrl:fv('mm_url').trim()},id); });
 }
 
 // ---- パスワード変更（本人） ----

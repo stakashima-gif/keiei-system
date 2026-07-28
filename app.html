@@ -134,6 +134,37 @@
     .checks{grid-template-columns:1fr}
     table{font-size:12px}th,td{padding:8px 8px}
   }
+  /* ── AI業務サポート（拡張） ── */
+  .btn.ai{background:linear-gradient(135deg,#7c5cff,#4f8cff)}
+  .subnav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+  .subnav button{background:var(--panel2);border:1px solid var(--line);color:var(--muted);padding:7px 14px;border-radius:20px;font-size:13px;cursor:pointer;font-family:inherit}
+  .subnav button.active{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+  .ai-out{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px 16px;white-space:pre-wrap;font-size:13.5px;line-height:1.8;margin-top:12px;position:relative;display:none}
+  .ai-out.show{display:block}
+  .ai-label{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--purple);font-weight:700;margin:12px 0 -4px}
+  .spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .copy-btn{position:absolute;top:8px;right:8px;background:var(--panel);border:1px solid var(--line);color:var(--muted);padding:3px 9px;border-radius:6px;font-size:11px;cursor:pointer}
+  .copy-btn:hover{color:var(--txt);border-color:var(--accent)}
+  .ch{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600}
+  .ch-email{background:rgba(79,140,255,.16);color:#7fadff}
+  .ch-slack{background:rgba(167,139,250,.16);color:#c4b0ff}
+  .ch-chatwork{background:rgba(6,182,212,.16);color:#4dd6e8}
+  .ch-line{background:rgba(34,197,94,.16);color:#4ade80}
+  .msg-row.done{opacity:.5}
+  .doc-preview{background:#fff;color:#1a1a1a;border-radius:10px;padding:40px 44px;max-width:760px;margin:14px auto;box-shadow:0 4px 24px rgba(0,0,0,.35);font-size:13px;line-height:1.7}
+  .doc-preview h1{font-size:24px;letter-spacing:.3em;text-align:center;margin:0 0 24px;color:#1a1a1a;border:none}
+  .doc-preview table{width:100%;border-collapse:collapse;margin:14px 0}
+  .doc-preview th,.doc-preview td{border:1px solid #ccc;padding:8px 10px;color:#1a1a1a}
+  .doc-preview th{background:#f0f2f5}
+  .doc-preview .r{text-align:right}
+  .doc-preview .muted2{color:#666}
+  .slide-deck{display:flex;flex-direction:column;gap:16px;margin-top:14px}
+  .slide{background:#fff;color:#1a2a44;aspect-ratio:4/3;border-radius:8px;padding:34px 40px;box-shadow:0 4px 20px rgba(0,0,0,.3);max-width:640px;width:100%}
+  .slide h2{font-size:22px;color:#1f2a44;margin:0 0 16px;border-bottom:3px solid #4f8cff;padding-bottom:8px;border-top:none;border-left:none;border-right:none}
+  .slide ul{margin:0;padding-left:22px} .slide li{margin:8px 0;font-size:15px}
+  .field.two2{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  @media print{body *{visibility:hidden}#print-area,#print-area *{visibility:visible}#print-area{position:absolute;left:0;top:0;width:100%}.doc-preview,.slide{box-shadow:none;margin:0 auto 20px}.slide{page-break-after:always}}
 </style>
 </head>
 <body>
@@ -151,6 +182,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 //==================================================================
 // API クライアント
@@ -191,8 +223,16 @@ const PAGES = [
   {id:'recruits', icon:'🧑‍💼', name:'採用管理', title:'採用管理', sub:'求職者管理・5項目スコア評価・Airワーク連携', sect:'業務'},
   {id:'memos', icon:'📝', name:'打ち合わせメモ', title:'打ち合わせメモ', sub:'商談・打ち合わせの記録。クライアント名で検索できます', sect:'業務'},
   {id:'tools', icon:'🔗', name:'ツール', title:'ツール一元管理', sub:'よく使うツールへのリンク集', sect:'ツール'},
+  {id:'inbox', icon:'📩', name:'返信ボックス', title:'返信ボックス', sub:'メール・Slack・Chatworkの要返信を一覧。AIが返信案を作成', sect:'AI業務サポート'},
+  {id:'salesai', icon:'🤝', name:'営業サポート', title:'営業サポート', sub:'顧客・商談の管理とAIによる次アクション提案・文面作成', sect:'AI業務サポート'},
+  {id:'docs', icon:'📄', name:'AI文書作成', title:'AI文書作成', sub:'見積・請求・提案・議事録・報告書をAIとPDF/PPTXで作成', sect:'AI業務サポート'},
+  {id:'billing', icon:'💳', name:'請求・入金管理', title:'請求・入金管理', sub:'請求書の入金状況・未入金アラート・AI催促文', sect:'AI業務サポート'},
+  {id:'expenses', icon:'🧾', name:'経費精算', title:'経費精算', sub:'経費の申請と承認フロー', sect:'AI業務サポート'},
+  {id:'timesheets', icon:'⏱️', name:'勤怠・工数', title:'勤怠・工数', sub:'日次の作業時間を事業・案件別に記録', sect:'AI業務サポート'},
+  {id:'reminders', icon:'🔔', name:'定型リマインド', title:'定型リマインド', sub:'月次の定型業務を期日管理', sect:'AI業務サポート'},
 ];
-const PAGE_WRITE={business:['businesses'],sales:['sales'],finance:['finance'],breakeven:['cost'],tasks:['tasks'],contracts:['contracts'],people:['people'],tools:['tools'],recruits:['recruits'],cashflow:['cashflow'],memos:['memos'],dashboard:[],analysis:[]};
+const PAGE_WRITE={business:['businesses'],sales:['sales'],finance:['finance'],breakeven:['cost'],tasks:['tasks'],contracts:['contracts'],people:['people'],tools:['tools'],recruits:['recruits'],cashflow:['cashflow'],memos:['memos'],dashboard:[],analysis:[],
+  inbox:['inbox'],salesai:['deals','customers'],docs:['documents','orgprofile'],billing:['documents'],expenses:['expenses'],timesheets:['timesheets'],reminders:['reminders']};
 const PAGE_NAME=Object.fromEntries(PAGES.map(p=>[p.id,p.name]));
 
 //==================================================================
@@ -257,7 +297,7 @@ function renderShell(){
     ps.forEach(p=>navHtml+=`<button data-pg="${p.id}"><span class="ic">${p.icon}</span> ${p.name}</button>`);
   });
   if(ME.role==='admin'){
-    navHtml+=`<div class="sect">管理</div><button data-pg="users"><span class="ic">🔑</span> アカウント管理</button>`;
+    navHtml+=`<div class="sect">管理</div><button data-pg="users"><span class="ic">🔑</span> アカウント管理</button><button data-pg="__integrations"><span class="ic">🔌</span> AI・連携設定</button>`;
   }
   document.getElementById('root').innerHTML=`
     <div class="app">
@@ -276,7 +316,7 @@ function renderShell(){
         <div class="content" id="content"></div>
       </main>
     </div>`;
-  document.querySelectorAll('#nav button').forEach(btn=>btn.onclick=()=>go(btn.dataset.pg));
+  document.querySelectorAll('#nav button').forEach(btn=>btn.onclick=()=>{ if(btn.dataset.pg==='__integrations'){ openIntegrations(); } else { go(btn.dataset.pg); } });
 }
 function roleLabel(r){ return r==='admin'?'管理者（全権限）':r==='editor'?'編集者':'閲覧者'; }
 function go(id){ current=id; markNav(); render(); window.scrollTo(0,0); }
@@ -358,7 +398,8 @@ function render(){
   markNav();
   const c=document.getElementById('content');
   const map={dashboard:renderDashboard,analysis:renderAnalysis,breakeven:renderBreakeven,business:renderBusiness,tools:renderTools,recruits:renderRecruits,memos:renderMemos,
-    sales:renderSales,finance:renderFinance,cashflow:renderCashflow,tasks:renderTasks,contracts:renderContracts,people:renderPeople,users:renderUsers};
+    sales:renderSales,finance:renderFinance,cashflow:renderCashflow,tasks:renderTasks,contracts:renderContracts,people:renderPeople,users:renderUsers,
+    inbox:renderInbox,salesai:renderSalesai,docs:renderDocs,billing:renderBilling,expenses:renderExpenses,timesheets:renderTimesheets,reminders:renderReminders};
   const p=PAGES.find(x=>x.id===current);
   (map[current]||(()=>{c.innerHTML='<div class="empty">ページがありません</div>'}))(c,p);
 }
@@ -381,6 +422,9 @@ function renderDashboard(c,p){
     </div><div style="height:16px"></div>
     ${overdue?`<div class="alert warn">⚠️ 期限超過のタスクが <b>${overdue}件</b> あります。</div>`:''}
     ${expiring?`<div class="alert warn">📄 30日以内に更新期限を迎える契約が <b>${expiring}件</b> あります。</div>`:''}
+    ${(()=>{const un=(STORE.inbox||[]).filter(x=>x.status!=='対応済み').length; return un?`<div class="alert info" style="cursor:pointer" onclick="go('inbox')">📩 未対応の返信が <b>${un}件</b> あります。返信ボックスを開く →</div>`:'';})()}
+    ${(()=>{const dueRem=(STORE.reminders||[]).filter(r=>r.active&&r.next&&r.next<=todayISO()).length; return dueRem?`<div class="alert warn" style="cursor:pointer" onclick="go('reminders')">🔔 期日を迎えた定型業務が <b>${dueRem}件</b> あります。→</div>`:'';})()}
+    ${(()=>{const unpaid=(STORE.documents||[]).filter(d=>d.type==='請求書'&&d.status!=='入金済み'&&d.due&&d.due<todayISO()).length; return unpaid?`<div class="alert bad" style="cursor:pointer" onclick="go('billing')">💳 入金期限を過ぎた請求が <b>${unpaid}件</b> あります。→</div>`:'';})()}
     <div class="two-col">
       <div class="card"><h3>月次売上推移（事業別）<span class="pill info">FY${(STORE.company||{}).fy||''}</span></h3>${stackedSales()}</div>
       <div class="card"><h3>事業別売上構成</h3>
@@ -1211,7 +1255,7 @@ function editTool(id){
 
 // ---- 採用管理（求職者管理・5項目スコア評価・Airワーク連携） ----
 const RECRUIT_STAGES=['応募','書類選考','面接','内定','入社','見送り'];
-const RECRUIT_SOURCES=['Airワーク','Indeed','リファラル','求人媒体','エージェント','直接応募','SNS','その他'];
+const RECRUIT_SOURCES=['Airワーク','Indeed','クラウドワークス','求人ボックス','リファラル','求人媒体','エージェント','直接応募','SNS','その他'];
 // 求職者を数値評価する5項目
 const SCORE_AXES=[
   {key:'skill',         label:'スキル',            color:'#4f8cff'},
@@ -1231,6 +1275,8 @@ function ageFromBirth(iso){ if(!iso) return null; const d=new Date(iso); if(isNa
   const t=new Date(); let a=t.getFullYear()-d.getFullYear(); const m=t.getMonth()-d.getMonth();
   if(m<0||(m===0&&t.getDate()<d.getDate())) a--; return (a>=0&&a<130)?a:null; }
 function ageLabel(iso){ const a=ageFromBirth(iso); return a!=null?a+'歳':'—'; }
+// 生年月日が無い場合はExcel取込の「年齢」を表示（フォールバック）
+function recAgeText(r){ const a=ageFromBirth(r&&r.birth); if(a!=null) return a+'歳'; if(r&&r.age) return r.age+'歳'; return ''; }
 function recAgeUpdate(){ const el=document.getElementById('r_age'); if(el) el.value=ageLabel(fv('r_birth')); }
 function stagePillCls(st){ return st==='入社'?'ok':st==='内定'?'info':st==='見送り'?'bad':st==='面接'?'warn':'muted'; }
 
@@ -1325,7 +1371,7 @@ function recFillRows(){
       :`<span class="scorebar"><i style="width:${avg/5*100}%;background:${scoreColor(avg)}"></i></span> <b style="color:${scoreColor(avg)}">${avg.toFixed(1)}</b>`;
     const srcCell=(r.source==='Airワーク')?`<span class="pill" style="background:rgba(245,158,11,.15);color:#fbbf24">Airワーク</span>`:`<span class="muted">${r.source||'—'}</span>`;
     return `<tr style="cursor:pointer" onclick="showRecruit('${r.id}')">
-      <td><b>${escapeHtml(r.name||'')}</b>${r.birth?`<span class="muted" style="font-size:11px"> (${ageLabel(r.birth)})</span>`:''}${r.kana?`<div class="muted" style="font-size:11px">${escapeHtml(r.kana)}</div>`:''}</td>
+      <td><b>${escapeHtml(r.name||'')}</b>${recAgeText(r)?`<span class="muted" style="font-size:11px"> (${recAgeText(r)})</span>`:''}${r.minutesUrl?` <a href="${escapeHtml(r.minutesUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="議事録を開く" style="text-decoration:none">📋</a>`:''}${r.kana?`<div class="muted" style="font-size:11px">${escapeHtml(r.kana)}</div>`:''}</td>
       <td>${escapeHtml(r.position||'')}</td><td>${srcCell}</td><td>${fmtDate(r.applied)}</td>
       <td><span class="pill ${stagePillCls(r.stage)}">${r.stage}</span></td><td>${scoreCell}</td>
       ${ed?`<td class="row-actions" onclick="event.stopPropagation()"><button class="icon-btn" onclick="editRecruit('${r.id}')">✏️</button><button class="icon-btn" onclick="del('recruits','${r.id}')">🗑</button></td>`:''}
@@ -1344,7 +1390,8 @@ function showRecruit(id){
     <div style="display:grid;grid-template-columns:1fr 220px;gap:18px;align-items:start">
       <div>
         ${kv('フリガナ', escapeHtml(r.kana||'—'))}
-        ${kv('生年月日 / 年齢', (r.birth||'—')+(r.birth?`　<span style="color:var(--accent)">${ageLabel(r.birth)}</span>`:''))}
+        ${kv('生年月日 / 年齢', (r.birth||'—')+(recAgeText(r)?`　<span style="color:var(--accent)">${recAgeText(r)}</span>`:''))}
+        ${r.minutesUrl?kv('議事録', `<a href="${escapeHtml(r.minutesUrl)}" target="_blank" rel="noopener" style="color:var(--accent)">📋 議事録を開く ↗</a>`):''}
         ${kv('ポジション', escapeHtml(r.position||'—'))}
         ${kv('選考状況', `<span class="pill ${stagePillCls(r.stage)}">${r.stage}</span>`)}
         ${kv('流入経路', escapeHtml(r.source||'—'))}
@@ -1377,14 +1424,16 @@ function editRecruit(id){
     <div class="field two"><label>氏名 / フリガナ</label>
       <input id="r_name" value="${escapeHtml(x.name||'')}" placeholder="山田 太郎"><input id="r_kana" value="${escapeHtml(x.kana||'')}" placeholder="やまだ たろう"></div>
     ${field('応募ポジション','r_pos',x.position)}
-    <div class="field two"><label>生年月日 / 年齢（自動計算）</label>
+    <div class="field two"><label>生年月日 / 年齢（自動計算・取込値）</label>
       <input id="r_birth" type="date" value="${x.birth||''}" oninput="recAgeUpdate()">
-      <input id="r_age" value="${ageLabel(x.birth)}" disabled style="opacity:.7" title="生年月日から自動計算"></div>
+      <input id="r_age" value="${recAgeText(x)||'—'}" disabled style="opacity:.7" title="生年月日から自動計算（未入力時はExcel取込の年齢）"></div>
     <div class="field two"><label>流入経路 / 選考状況</label>
-      <select id="r_src">${RECRUIT_SOURCES.map(o=>`<option${o===(x.source||'Airワーク')?' selected':''}>${o}</option>`).join('')}</select>
+      <select id="r_src">${[...new Set([x.source||'Airワーク',...RECRUIT_SOURCES])].map(o=>`<option${o===(x.source||'Airワーク')?' selected':''}>${o}</option>`).join('')}</select>
       <select id="r_stage">${RECRUIT_STAGES.map(o=>`<option${o===x.stage?' selected':''}>${o}</option>`).join('')}</select></div>
     <div class="field two"><label>面談日 / AirワークID（任意）</label>
       <input id="r_applied" type="date" value="${x.applied||todayISO()}"><input id="r_aw" value="${escapeHtml(x.airworkId||'')}" placeholder="AW-00000"></div>
+    <div class="field"><label>議事録URL（Frictio等・任意）</label>
+      <input id="r_url" type="url" value="${escapeHtml(x.minutesUrl||'')}" placeholder="https://app.frictio.ai/ws/..."></div>
     <div class="field"><label>5項目 評価スコア（1〜5）</label>
       <div style="display:grid;grid-template-columns:1fr 180px;gap:14px;align-items:center">
         <div>${sliders}</div>
@@ -1396,7 +1445,7 @@ function editRecruit(id){
       if(!fv('r_name').trim()) throw new Error('氏名を入力してください');
       const scores=SCORE_AXES.reduce((o,a)=>{o[a.key]=Number(fv('rs_'+a.key));return o;},{});
       return upsert('recruits',{id:id||b(),name:fv('r_name').trim(),kana:fv('r_kana').trim(),position:fv('r_pos'),
-        birth:fv('r_birth'),stage:fv('r_stage'),source:fv('r_src'),airworkId:fv('r_aw').trim(),applied:fv('r_applied'),note:fv('r_note'),scores},id);
+        birth:fv('r_birth'),age:x.age,minutesUrl:fv('r_url').trim(),stage:fv('r_stage'),source:fv('r_src'),airworkId:fv('r_aw').trim(),applied:fv('r_applied'),note:fv('r_note'),scores},id);
     });
 }
 function recPreview(){
@@ -1414,12 +1463,12 @@ function recruitIntegration(){
       <b>CSVの取り込み／書き出し</b>で行います。将来 公式API等が使える場合に備え、下に「API連携」枠を用意しています（未実装）。
     </div>
     <div class="stat-line"><span class="muted">現在Airワーク経由の候補者</span><b>${awCount}名</b></div>
-    <div style="margin:16px 0 8px;font-weight:600">CSV連携（利用可能）</div>
-    <p class="muted" style="font-size:12px;margin:0 0 12px;line-height:1.7">Airワークからダウンロードした応募者CSVを取り込みます。氏名・フリガナ・ポジション・流入経路・面談日・各評価項目の列を自動でマッピングします。</p>
+    <div style="margin:16px 0 8px;font-weight:600">CSV / Excel 取込（利用可能）</div>
+    <p class="muted" style="font-size:12px;margin:0 0 12px;line-height:1.7">AirワークのCSVのほか、<b>面談情報のExcel（.xlsx）</b>もそのまま取り込めます。列（面談日・候補者・フリガナ・年齢・経由・結果・アクション・メモ等）を自動マッピングし、「結果」は選考状況（採用→内定、不採用→見送り、保留→面接）に変換、メモ欄のFrictio等のURLは議事録リンクとして保存されます。</p>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px">
-      ${ed?`<button class="btn ghost" onclick="document.getElementById('rec-csv-file').click()">⬆ CSVを取り込む</button>`:''}
+      ${ed?`<button class="btn ghost" onclick="document.getElementById('rec-csv-file').click()">⬆ CSV / Excel を取り込む</button>`:''}
       <button class="btn ghost" onclick="recExportCsv()">⬇ CSVを書き出す</button>
-      <input id="rec-csv-file" type="file" accept=".csv" style="display:none" onchange="recImportCsv(this)">
+      <input id="rec-csv-file" type="file" accept=".csv,.xlsx,.xls" style="display:none" onchange="recImportCsv(this)">
     </div>
     <div style="margin:20px 0 8px;font-weight:600">API連携 <span class="pill muted">準備中</span></div>
     <div class="field"><label>APIエンドポイント</label><input disabled placeholder="https://api.airwork...（未設定）" style="opacity:.6"></div>
@@ -1434,31 +1483,71 @@ function recExportCsv(){
   const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`候補者データ_${todayISO()}.csv`; a.click();
 }
+// CSV / Excel(.xlsx) 共通取込。「面談情報」形式（No/面談日/事業/候補者/フリガナ/年齢/経由/結果/アクション/メモ）にも対応
+function recNormDate(v){
+  if(v instanceof Date && !isNaN(v)) return `${v.getFullYear()}-${String(v.getMonth()+1).padStart(2,'0')}-${String(v.getDate()).padStart(2,'0')}`;
+  const s=String(v||'').trim(); if(!s) return '';
+  let m=s.match(/(\d{4})[\/\-年.](\d{1,2})[\/\-月.](\d{1,2})/);
+  if(m) return `${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`;
+  return '';
+}
+async function recRowsFromFile(file){
+  if(/\.xlsx?$/i.test(file.name)){
+    if(!window.XLSX) throw new Error('Excel読み取りライブラリを読み込めませんでした（ネット接続を確認）');
+    const wb=XLSX.read(await file.arrayBuffer(),{cellDates:true});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    return XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:''});
+  }
+  const text=(await file.text()).replace(/^﻿/,'');
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  const parse=line=>{ const out=[]; let cur='',q=false; for(let i=0;i<line.length;i++){ const ch=line[i];
+    if(q){ if(ch==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; }
+    else { if(ch===','){out.push(cur);cur='';} else if(ch==='"'){q=true;} else cur+=ch; } } out.push(cur); return out; };
+  return lines.map(parse);
+}
 function recImportCsv(input){
   const file=input.files[0]; if(!file) return;
-  const reader=new FileReader();
-  reader.onload=async e=>{
+  (async()=>{
     try{
-      const text=String(e.target.result).replace(/^﻿/,'');
-      const lines=text.split(/\r?\n/).filter(l=>l.trim());
-      const parse=line=>{ const out=[]; let cur='',q=false; for(let i=0;i<line.length;i++){ const ch=line[i];
-        if(q){ if(ch==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; }
-        else { if(ch===','){out.push(cur);cur='';} else if(ch==='"'){q=true;} else cur+=ch; } } out.push(cur); return out; };
-      const head=parse(lines[0]); const idx=n=>head.findIndex(h=>h.includes(n));
-      const imported=lines.slice(1).map(line=>{ const cols=parse(line); const g=(n,d='')=>{ const i=idx(n); return i>=0?cols[i]:d; };
+      const rows=await recRowsFromFile(file);
+      if(rows.length<2) throw new Error('データ行が見つかりません');
+      const head=rows[0].map(h=>String(h||'').trim());
+      const idx=n=>head.findIndex(h=>h.includes(n));
+      const imported=rows.slice(1).map(cols=>{
+        const g=(n,d='')=>{ const i=idx(n); return i>=0?String(cols[i]??'').trim():d; };
+        const gRaw=n=>{ const i=idx(n); return i>=0?cols[i]:''; };
+        const name=g('氏名')||g('候補者'); if(!name) return null;
         const scores=SCORE_AXES.reduce((o,a)=>{ const i=idx(a.label); o[a.key]=i>=0?(Number(cols[i])||0):0; return o; },{});
-        const stg=g('選考状況')||g('ステータス'); const stage=RECRUIT_STAGES.includes(stg)?stg:'応募';
-        return {id:b(),name:g('氏名'),kana:g('フリガナ'),position:g('ポジション')||g('職種')||'',source:g('流入経路')||'Airワーク',
-          airworkId:g('AirワークID')||g('ID'),applied:g('面談日')||g('応募日')||todayISO(),stage,note:g('メモ'),scores};
-      }).filter(r=>r.name);
+        // 選考状況：直接指定 or 「結果」列（採用/不採用/保留/ドタキャン）から変換
+        let stage='応募', extraNote='';
+        const stg=g('選考状況')||g('ステータス');
+        if(RECRUIT_STAGES.includes(stg)) stage=stg;
+        else{
+          const res=g('結果');
+          if(res==='採用') stage='内定';
+          else if(res==='不採用') stage='見送り';
+          else if(res==='保留'){ stage='面接'; extraNote='【結果:保留】'; }
+          else if(res){ stage='見送り'; extraNote=`【結果:${res}】`; }
+        }
+        // メモ列にURLがあれば議事録リンクとして分離
+        const memoV=g('メモ'); let minutesUrl=g('議事録URL')||'';
+        let noteParts=[extraNote, g('アクション')];
+        if(/^https?:\/\//.test(memoV)&&!minutesUrl) minutesUrl=memoV; else if(memoV) noteParts.push(memoV);
+        const age=Number(g('年齢'))||0;
+        return {id:b(),name,kana:g('フリガナ'),position:g('ポジション')||g('職種')||g('事業')||'',
+          source:g('流入経路')||g('経由')||'Airワーク',airworkId:g('AirワークID')||g('ID'),
+          applied:recNormDate(gRaw('面談日'))||recNormDate(gRaw('応募日'))||todayISO(),
+          stage,age:age>0&&age<120?age:undefined,minutesUrl,
+          note:noteParts.filter(Boolean).join('\n'),scores};
+      }).filter(Boolean);
       if(!imported.length){ alert('取り込めるデータがありませんでした'); input.value=''; return; }
+      await loadStore();  // 最新を取得してから追記
       STORE.recruits=[...imported,...(STORE.recruits||[])];
       await persist('recruits'); closeModal(); render();
       alert(`${imported.length}件を取り込みました`);
-    }catch(err){ alert('CSVの読み込みに失敗しました: '+err.message); }
+    }catch(err){ alert('取り込みに失敗しました: '+err.message); }
     input.value='';
-  };
-  reader.readAsText(file,'UTF-8');
+  })();
 }
 function renderRecruits(c,p){ recRender(); }
 
@@ -1599,6 +1688,575 @@ function editUser(u){
 async function delUser(id,name){
   if(!confirm(`メンバー「${name}」を削除しますか?`)) return;
   try{ await api('DELETE','/api/users/'+id); render(); }catch(e){ alert(e.message); }
+}
+
+//==================================================================
+// AI業務サポート（拡張）── 共通ヘルパー
+//==================================================================
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function copyBtn(){ return `<button class="copy-btn" onclick="copyOut(this)">📋 コピー</button>`; }
+function copyOut(btn){ const t=btn.parentElement.innerText.replace(/📋 コピー$/,'').trim(); navigator.clipboard.writeText(t).then(()=>toast('コピーしました')); }
+let _toastT=null;
+function toast(msg){ let el=document.getElementById('toast'); if(!el){ el=document.createElement('div'); el.id='toast'; el.style.cssText='position:fixed;bottom:24px;right:24px;background:var(--panel);border:1px solid var(--accent);color:var(--txt);padding:12px 20px;border-radius:10px;box-shadow:var(--shadow);z-index:1000;font-size:13px'; document.body.appendChild(el);} el.textContent=msg; el.style.display='block'; clearTimeout(_toastT); _toastT=setTimeout(()=>el.style.display='none',2200); }
+async function aiComplete(system,userMsg,maxTokens=3000){
+  const r=await api('POST','/api/ai',{system,messages:[{role:'user',content:userMsg}],max_tokens:maxTokens});
+  return r.text;
+}
+async function aiRun(btn,outId,system,userMsg,maxTokens=3000){
+  const out=document.getElementById(outId); const orig=btn.innerHTML;
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> 生成中...'; out.className='ai-out show'; out.textContent='生成中…';
+  try{ const t=await aiComplete(system,userMsg,maxTokens); out.innerHTML=esc(t)+copyBtn(); return t; }
+  catch(e){ out.textContent='⚠️ '+e.message; return null; }
+  finally{ btn.disabled=false; btn.innerHTML=orig; }
+}
+function orgCtx(){ const o=STORE.orgprofile||{}; let s=''; if(o.company)s+=`会社名:${o.company}\n`; if(o.person)s+=`担当:${o.person}\n`; if(o.service)s+=`事業内容:${o.service}\n`; if(o.strength)s+=`強み:${o.strength}\n`; return s||'（会社情報未設定）'; }
+function custNames(){ return (STORE.customers||[]).map(c=>c.name); }
+function selOpts(list,val){ return list.map(o=>`<option${o===val?' selected':''}>${esc(o)}</option>`).join(''); }
+function printHTML(title,inner){
+  const w=window.open('','_blank'); if(!w){ toast('ポップアップを許可してください'); return; }
+  const css=document.querySelector('style').innerHTML;
+  w.document.write(`<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>${esc(title)}</title><style>${css} body{background:#fff;padding:20px}</style></head><body><div id="print-area">${inner}</div><script>window.onload=()=>{setTimeout(()=>window.print(),300)}<\/script></body></html>`);
+  w.document.close();
+}
+
+//==================================================================
+// 返信ボックス（統合インボックス）
+//==================================================================
+let inboxCh='all', inboxSt='all';
+const CH_LABEL={email:'メール',slack:'Slack',chatwork:'Chatwork',line:'LINE'};
+function chBadge(ch){ return `<span class="ch ch-${ch||'email'}">${CH_LABEL[ch]||ch||'その他'}</span>`; }
+function renderInbox(c,p){
+  const ed=canEdit('inbox');
+  setHeader(p.title,p.sub,`${ed?`<button class="btn" onclick="syncInbox(this)">🔄 同期</button> <button class="btn ghost" onclick="editInboxItem()">＋ 手動追加</button>`:roBadge()}`);
+  let list=(STORE.inbox||[]).slice();
+  if(inboxCh!=='all') list=list.filter(x=>x.channel===inboxCh);
+  if(inboxSt!=='all') list=list.filter(x=>(inboxSt==='open'?x.status!=='対応済み':x.status==='対応済み'));
+  list.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const all=STORE.inbox||[]; const un=all.filter(x=>x.status!=='対応済み').length;
+  const byCh={}; all.forEach(x=>byCh[x.channel]=(byCh[x.channel]||0)+1);
+  c.innerHTML=`
+    <div class="grid kpis">
+      ${kpi('未対応','📩',un,'')}${kpi('本日','📅',all.filter(x=>x.date===todayISO()).length,'')}
+      ${kpi('メール','✉️',byCh.email||0,'')}${kpi('チャット','💬',(byCh.slack||0)+(byCh.chatwork||0)+(byCh.line||0),'')}
+    </div><div style="height:16px"></div>
+    <div class="toolbar" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+      <select onchange="inboxCh=this.value;render()">
+        <option value="all"${inboxCh==='all'?' selected':''}>全チャネル</option>
+        ${['email','slack','chatwork','line'].map(k=>`<option value="${k}"${inboxCh===k?' selected':''}>${CH_LABEL[k]}</option>`).join('')}
+      </select>
+      <select onchange="inboxSt=this.value;render()">
+        <option value="all"${inboxSt==='all'?' selected':''}>すべての状態</option>
+        <option value="open"${inboxSt==='open'?' selected':''}>未対応</option>
+        <option value="done"${inboxSt==='done'?' selected':''}>対応済み</option>
+      </select>
+      <span class="muted" style="font-size:12px;align-self:center">※ 同期には管理者の「設定 > AI・連携」でChatwork/Slack/Gmailの登録が必要です</span>
+    </div>
+    <div class="card"><table>
+    <thead><tr><th>チャネル</th><th>差出人</th><th>件名 / 内容</th><th>日付</th><th>状態</th>${ed?'<th></th>':''}</tr></thead>
+    <tbody>${list.map(m=>`<tr class="msg-row ${m.status==='対応済み'?'done':''}">
+      <td>${chBadge(m.channel)}</td><td><b>${esc(m.sender)}</b></td>
+      <td><div>${esc(m.subject||'')}</div><div class="muted" style="font-size:12px">${esc((m.snippet||'').slice(0,80))}</div>${m.reply?`<div style="font-size:11px;color:var(--accent2);margin-top:3px">✓ 返信案あり</div>`:''}</td>
+      <td class="muted" style="font-size:12px">${esc(m.date||'')}</td>
+      <td><span class="pill ${m.status==='対応済み'?'ok':'warn'}">${m.status}</span></td>
+      ${ed?`<td class="row-actions" style="white-space:nowrap">
+        <button class="icon-btn" title="AI返信案" onclick="inboxReply('${m.id}')">🤖</button>
+        <button class="icon-btn" title="${m.status==='対応済み'?'未対応に戻す':'対応済みにする'}" onclick="inboxToggle('${m.id}')">${m.status==='対応済み'?'↩':'✓'}</button>
+        <button class="icon-btn" onclick="editInboxItem('${m.id}')">✏️</button>
+        <button class="icon-btn" onclick="del('inbox','${m.id}')">🗑</button></td>`:''}
+    </tr>`).join('')||`<tr><td colspan="${ed?6:5}"><div class="empty">メッセージがありません。「同期」または「手動追加」から取り込めます。</div></td></tr>`}</tbody></table></div>`;
+}
+async function syncInbox(btn){
+  const orig=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spin"></span> 同期中...';
+  try{ const r=await api('GET','/api/inbox/sync'); await loadStore(); render();
+    const st=Object.entries(r.status||{}).map(([k,v])=>`${CH_LABEL[k]==null?k:CH_LABEL[k]||k}: ${v}`).join(' / ');
+    toast(`${r.added}件を取り込みました（${st}）`);
+  }catch(e){ alert(e.message); }
+  finally{ btn.disabled=false; btn.innerHTML=orig; }
+}
+function editInboxItem(id){
+  const x=(STORE.inbox||[]).find(m=>m.id===id)||{channel:'email',sender:'',subject:'',snippet:'',date:todayISO(),status:'未対応',reply:''};
+  openModal(id?'メッセージを編集':'メッセージを追加',
+    `${selField('チャネル','f_ch',x.channel==='email'?'メール':x.channel==='slack'?'Slack':x.channel==='chatwork'?'Chatwork':'LINE',['メール','Slack','Chatwork','LINE'])}
+     ${field('差出人','f_snd',x.sender)}${field('件名','f_sub',x.subject)}
+     <div class="field"><label>本文・内容</label><textarea id="f_snip" rows="4">${esc(x.snippet||'')}</textarea></div>
+     ${field('日付','f_date',x.date,'date')}${selField('状態','f_st',x.status,['未対応','対応済み'])}`,
+    ()=>{ const chm={'メール':'email','Slack':'slack','Chatwork':'chatwork','LINE':'line'};
+      upsert('inbox',{id:id||b(),channel:chm[fv('f_ch')],sender:fv('f_snd'),subject:fv('f_sub'),snippet:fv('f_snip'),date:fv('f_date'),status:fv('f_st'),reply:x.reply||'',external_id:x.external_id||''},id); });
+}
+function inboxToggle(id){ const m=(STORE.inbox||[]).find(x=>x.id===id); if(!m)return; m.status=m.status==='対応済み'?'未対応':'対応済み'; upsert('inbox',m,id); }
+function inboxReply(id){
+  const m=(STORE.inbox||[]).find(x=>x.id===id); if(!m)return;
+  openModal('🤖 AI返信案',
+    `<div class="muted" style="font-size:12.5px;margin-bottom:8px">${chBadge(m.channel)} <b>${esc(m.sender)}</b> ／ ${esc(m.subject||'')}</div>
+     <div class="card" style="background:var(--panel2);font-size:13px;margin-bottom:10px">${esc(m.snippet||'（本文なし）')}</div>
+     <div class="field"><label>返信の方針</label><select id="f_pol"><option>丁寧に回答し次のステップにつなげる</option><option>質問に簡潔に回答</option><option>日程調整を提案</option><option>お詫び＋対応方針</option><option>やんわり断る</option></select></div>
+     <div class="field"><label>補足指示（任意）</label><input id="f_note" placeholder="例: 見積は個別対応と伝える"></div>
+     <button class="btn ai" id="f_gen" onclick="doInboxGen('${id}')">✨ 返信案を生成</button>
+     <div class="ai-label">AIの返信案（編集可）</div>
+     <textarea id="f_reply" rows="8" style="margin-top:4px">${esc(m.reply||'')}</textarea>`,
+    ()=>{ m.reply=fv('f_reply'); m.status='対応済み'; upsert('inbox',m,id); toast('返信案を保存し、対応済みにしました'); });
+}
+async function doInboxGen(id){
+  const m=(STORE.inbox||[]).find(x=>x.id===id); const btn=document.getElementById('f_gen'); const orig=btn.innerHTML;
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> 生成中...';
+  try{
+    const t=await aiComplete(
+      `あなたは${CH_LABEL[m.channel]||''}での顧客・社内コミュニケーションに長けたアシスタントです。日本語で、そのチャネルにふさわしい自然な返信文を作成します（メールは丁寧、Slack/Chatworkは簡潔で親しみやすく）。\n【自社情報】\n${orgCtx()}`,
+      `以下のメッセージへの返信を作成してください。\n\n差出人: ${m.sender}\n件名: ${m.subject||''}\n本文: ${m.snippet||'（本文なし）'}\n\n返信方針: ${fv('f_pol')}\n補足: ${fv('f_note')||'なし'}\n\n出力は返信本文のみ。`,2000);
+    document.getElementById('f_reply').value=t;
+  }catch(e){ alert(e.message); }
+  finally{ btn.disabled=false; btn.innerHTML=orig; }
+}
+
+//==================================================================
+// 営業サポート（商談・顧客・AI提案・文面作成）
+//==================================================================
+let salesTab='deals';
+const STAGES=['リード','商談中','提案','クロージング','成約','失注'];
+function stagePill(s){ const m={'リード':'muted','商談中':'info','提案':'info','クロージング':'warn','成約':'ok','失注':'bad'}; return `<span class="pill ${m[s]||'muted'}">${s}</span>`; }
+function renderSalesai(c,p){
+  const ed=canEdit('salesai');
+  setHeader(p.title,p.sub,ed?`<button class="btn ai" onclick="openWriter()">✍️ 文面作成</button>`:roBadge());
+  const deals=STORE.deals||[], custs=STORE.customers||[];
+  const active=deals.filter(d=>!['成約','失注'].includes(d.stage));
+  c.innerHTML=`
+    <div class="grid kpis">
+      ${kpi('進行中の商談','🤝',active.length,'')}${kpi('見込み金額','💰',yen(active.reduce((a,d)=>a+(+d.amount||0),0)),'')}
+      ${kpi('今月の成約','✅',deals.filter(d=>d.stage==='成約').length,'')}${kpi('顧客数','👥',custs.length,'')}
+    </div><div style="height:16px"></div>
+    <div class="subnav">
+      <button class="${salesTab==='deals'?'active':''}" onclick="salesTab='deals';render()">🤝 商談</button>
+      <button class="${salesTab==='custs'?'active':''}" onclick="salesTab='custs';render()">👥 顧客</button>
+    </div>
+    ${salesTab==='deals'?dealsView(ed):custsView(ed)}
+    <div class="ai-out" id="sales_ai"></div>`;
+}
+function dealsView(ed){
+  const deals=(STORE.deals||[]).slice().sort((a,b)=>(a.next||'9999').localeCompare(b.next||'9999'));
+  return `<div style="margin-bottom:10px">${ed?`<button class="btn" onclick="editDeal()">＋ 商談を追加</button>`:''}</div>
+    <div class="card"><table>
+    <thead><tr><th>顧客</th><th>案件</th><th class="num">金額</th><th>ステージ</th><th>次回</th><th>メモ</th>${ed?'<th></th>':''}</tr></thead>
+    <tbody>${deals.map(d=>`<tr>
+      <td><b>${esc(d.customer)}</b></td><td>${esc(d.title)}</td><td class="num">${yen(d.amount)}</td><td>${stagePill(d.stage)}</td>
+      <td class="${d.next&&d.next<todayISO()&&!['成約','失注'].includes(d.stage)?'down':'muted'}" style="font-size:12px">${fmtDate(d.next)}</td>
+      <td class="muted" style="font-size:12px;max-width:200px">${esc(d.memo||'')}</td>
+      ${ed?`<td class="row-actions" style="white-space:nowrap"><button class="icon-btn" title="AI次アクション" onclick="dealAI('${d.id}')">🤖</button><button class="icon-btn" onclick="editDeal('${d.id}')">✏️</button><button class="icon-btn" onclick="del('deals','${d.id}')">🗑</button></td>`:''}
+    </tr>`).join('')||`<tr><td colspan="${ed?7:6}"><div class="empty">商談がありません</div></td></tr>`}</tbody></table></div>`;
+}
+function custsView(ed){
+  const cs=STORE.customers||[];
+  return `<div style="margin-bottom:10px">${ed?`<button class="btn" onclick="editCust()">＋ 顧客を追加</button>`:''}</div>
+    <div class="card"><table>
+    <thead><tr><th>会社名</th><th>担当者</th><th>連絡先</th><th>ステータス</th><th>メモ</th>${ed?'<th></th>':''}</tr></thead>
+    <tbody>${cs.map(x=>`<tr>
+      <td><b>${esc(x.name)}</b></td><td>${esc(x.person||'—')}</td><td>${esc(x.contact||'—')}</td>
+      <td><span class="pill ${x.status==='既存顧客'?'ok':x.status==='見込み'?'info':x.status==='休眠'?'muted':'warn'}">${esc(x.status)}</span></td>
+      <td class="muted" style="font-size:12px;max-width:220px">${esc(x.memo||'')}</td>
+      ${ed?`<td class="row-actions" style="white-space:nowrap"><button class="icon-btn" title="AIアプローチ提案" onclick="custAI('${x.id}')">🤖</button><button class="icon-btn" onclick="editCust('${x.id}')">✏️</button><button class="icon-btn" onclick="del('customers','${x.id}')">🗑</button></td>`:''}
+    </tr>`).join('')||`<tr><td colspan="${ed?6:5}"><div class="empty">顧客がいません</div></td></tr>`}</tbody></table></div>`;
+}
+function editDeal(id){
+  const x=(STORE.deals||[]).find(d=>d.id===id)||{customer:'',title:'',amount:0,stage:'リード',next:todayISO(),memo:'',biz:'全社'};
+  const bizOpts=['全社',...(STORE.businesses||[]).map(z=>z.name)];
+  openModal(id?'商談を編集':'商談を追加',
+    `${selField('顧客','f_cust',x.customer,custNames().length?custNames():[''])}${field('案件名','f_title',x.title)}
+     ${field('金額(円)','f_amt',x.amount,'number')}${selField('ステージ','f_stg',x.stage,STAGES)}
+     ${field('次回アクション日','f_next',x.next,'date')}${selField('事業','f_biz',x.biz||'全社',bizOpts)}
+     <div class="field"><label>メモ</label><textarea id="f_memo" rows="2">${esc(x.memo||'')}</textarea></div>`,
+    ()=>upsert('deals',{id:id||b(),customer:fv('f_cust'),title:fv('f_title'),amount:fnum('f_amt'),stage:fv('f_stg'),next:fv('f_next'),biz:fv('f_biz'),memo:fv('f_memo')},id));
+}
+function editCust(id){
+  const x=(STORE.customers||[]).find(c=>c.id===id)||{name:'',person:'',contact:'',status:'見込み',biz:'全社',memo:''};
+  const bizOpts=['全社',...(STORE.businesses||[]).map(z=>z.name)];
+  openModal(id?'顧客を編集':'顧客を追加',
+    `${field('会社名','f_name',x.name)}${field('担当者','f_person',x.person)}${field('連絡先','f_contact',x.contact)}
+     ${selField('ステータス','f_status',x.status,['見込み','アプローチ中','既存顧客','休眠'])}${selField('関連事業','f_biz',x.biz||'全社',bizOpts)}
+     <div class="field"><label>メモ（業種・課題など）</label><textarea id="f_memo" rows="2">${esc(x.memo||'')}</textarea></div>`,
+    ()=>upsert('customers',{id:id||b(),name:fv('f_name'),person:fv('f_person'),contact:fv('f_contact'),status:fv('f_status'),biz:fv('f_biz'),memo:fv('f_memo')},id));
+}
+async function dealAI(id){
+  const d=(STORE.deals||[]).find(x=>x.id===id); const cust=(STORE.customers||[]).find(c=>c.name===d.customer);
+  const out=document.getElementById('sales_ai'); out.className='ai-out show'; out.textContent='生成中…'; out.scrollIntoView({behavior:'smooth',block:'nearest'});
+  try{ const t=await aiComplete(
+    `あなたは営業戦略に長けたアシスタントです。商談を前進させる具体的な次アクションを日本語で提案します。\n【自社情報】\n${orgCtx()}`,
+    `商談:「${d.title}」\n顧客:${d.customer}${cust?`（担当:${cust.person||'不明'}/状況:${cust.status}/メモ:${cust.memo||'なし'}）`:''}\n金額:${yen(d.amount)}\nステージ:${d.stage}\n次回:${d.next||'未定'}\nメモ:${d.memo||'なし'}\n今日:${todayISO()}\n\n形式:\n1. 現状分析(1-2行)\n2. 推奨アクション(優先順に2-3個)\n3. リスクと先回り策(1-2行)`,1800);
+    out.innerHTML=`<div class="ai-label">💡「${esc(d.title)}」の次アクション</div>\n`+esc(t)+copyBtn();
+  }catch(e){ out.textContent='⚠️ '+e.message; }
+}
+async function custAI(id){
+  const x=(STORE.customers||[]).find(c=>c.id===id); const deals=(STORE.deals||[]).filter(d=>d.customer===x.name);
+  const out=document.getElementById('sales_ai'); out.className='ai-out show'; out.textContent='生成中…'; out.scrollIntoView({behavior:'smooth',block:'nearest'});
+  try{ const t=await aiComplete(
+    `あなたは営業戦略に長けたアシスタントです。顧客への最適なアプローチを日本語で提案します。\n【自社情報】\n${orgCtx()}`,
+    `会社:${x.name}\n担当:${x.person||'不明'}\nステータス:${x.status}\nメモ:${x.memo||'なし'}\n関連商談:${deals.length?deals.map(d=>`「${d.title}」(${d.stage})`).join('、'):'なし'}\n\n形式:\n1. 攻略ポイント(1-2行)\n2. 推奨アプローチ(2-3個)\n3. 最初の一手(今日できること)`,1800);
+    out.innerHTML=`<div class="ai-label">💡 ${esc(x.name)}へのアプローチ提案</div>\n`+esc(t)+copyBtn();
+  }catch(e){ out.textContent='⚠️ '+e.message; }
+}
+function openWriter(){
+  openModal('✍️ AI営業文面作成',
+    `${selField('文面タイプ','w_type','新規営業メール',['新規営業メール','フォローアップ','提案メール','SNS DM(カジュアル)','お礼メール','再アプローチ(休眠掘り起こし)','アポ打診'])}
+     ${selField('宛先(顧客)','w_cust','',['',...custNames()])}
+     ${selField('トーン','w_tone','丁寧・フォーマル',['丁寧・フォーマル','親しみやすい','簡潔・ビジネスライク','熱意を伝える'])}
+     <div class="field"><label>伝えたいポイント・背景</label><textarea id="w_pt" rows="3" placeholder="例:展示会で名刺交換。制作実績を紹介し30分の打合せを打診したい"></textarea></div>
+     <button class="btn ai" id="w_gen" onclick="doWriter()">✨ 文面を生成</button>
+     <div class="ai-out" id="w_out"></div>`,null);
+  document.getElementById('modal-save').style.display='none';
+}
+async function doWriter(){
+  const cust=(STORE.customers||[]).find(c=>c.name===fv('w_cust'));
+  const tgt=cust?`宛先:${cust.name} ${cust.person?cust.person+'様':''}（状況:${cust.status}${cust.memo?'/メモ:'+cust.memo:''}）`:'宛先:未指定（汎用）';
+  await aiRun(document.getElementById('w_gen'),'w_out',
+    `あなたは成果を出す営業文面のプロです。日本のビジネス慣習に沿った自然な日本語で作成します。件名が要る場合は「件名:」から。\n【差出人の会社情報】\n${orgCtx()}`,
+    `「${fv('w_type')}」を作成。\n${tgt}\nトーン:${fv('w_tone')}\nポイント:${fv('w_pt')||'会社情報から適切に'}\n出力は文面本文のみ。`,2000);
+}
+
+//==================================================================
+// AI文書作成（見積・請求・提案・議事録・報告書・スライド）
+//==================================================================
+let docsTab='invoice', curDoc=null;
+function renderDocs(c,p){
+  const ed=canEdit('docs');
+  setHeader(p.title,p.sub, ed&&ME.role==='admin'?`<button class="btn ghost" onclick="editOrg()">🏢 会社情報</button>`:roBadge());
+  c.innerHTML=`
+    <div class="subnav">
+      <button class="${docsTab==='invoice'?'active':''}" onclick="docsTab='invoice';curDoc=null;render()">🧾 見積・請求書</button>
+      <button class="${docsTab==='writing'?'active':''}" onclick="docsTab='writing';render()">📝 提案・議事録・報告書</button>
+      <button class="${docsTab==='slides'?'active':''}" onclick="docsTab='slides';render()">📊 スライド資料</button>
+    </div>
+    <div id="docs_body"></div>`;
+  const body=document.getElementById('docs_body');
+  if(docsTab==='invoice') renderInvoiceTab(body,ed);
+  else if(docsTab==='writing') renderWritingTab(body,ed);
+  else renderSlidesTab(body,ed);
+}
+// ---- 見積・請求書 ----
+function docTotals(doc){ const sub=(doc.items||[]).reduce((a,it)=>a+(+it.qty||0)*(+it.unit||0),0); const tax=Math.round(sub*(+doc.taxRate||0)/100); return {sub,tax,total:sub+tax}; }
+function nextDocNumber(type){ const pre=type==='請求書'?'INV':'EST'; const y=new Date().getFullYear(); const n=(STORE.documents||[]).filter(d=>d.type===type).length+1; return `${pre}-${y}-${String(n).padStart(4,'0')}`; }
+function newDoc(type){ curDoc={id:b(),type,number:nextDocNumber(type),client:'',date:todayISO(),due:type==='請求書'?addDays(30):'',items:[{name:'',qty:1,unit:0}],taxRate:10,note:type==='請求書'?'お振込手数料は御社にてご負担ください。':'有効期限: 発行から30日',status:type==='請求書'?'入金待ち':'作成済み',paidDate:''}; render(); }
+function renderInvoiceTab(el,ed){
+  if(curDoc){ el.innerHTML=docBuilder(ed); return; }
+  const docs=(STORE.documents||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  el.innerHTML=`
+    ${ed?`<div style="margin-bottom:12px;display:flex;gap:8px"><button class="btn" onclick="newDoc('見積書')">＋ 見積書を作成</button><button class="btn" onclick="newDoc('請求書')">＋ 請求書を作成</button></div>`:''}
+    <div class="card"><table>
+    <thead><tr><th>種別</th><th>番号</th><th>宛先</th><th>発行日</th><th class="num">金額(税込)</th><th>状態</th>${ed?'<th></th>':''}</tr></thead>
+    <tbody>${docs.map(d=>{const t=docTotals(d);return `<tr>
+      <td><span class="pill ${d.type==='請求書'?'info':'muted'}">${d.type}</span></td><td><b>${esc(d.number)}</b></td><td>${esc(d.client)}</td>
+      <td class="muted" style="font-size:12px">${esc(d.date)}</td><td class="num">${yen(t.total)}</td>
+      <td><span class="pill ${d.status==='入金済み'?'ok':d.status==='入金待ち'?'warn':'muted'}">${esc(d.status)}</span></td>
+      ${ed?`<td class="row-actions" style="white-space:nowrap"><button class="icon-btn" title="開く/PDF" onclick="openDoc('${d.id}')">📄</button><button class="icon-btn" onclick="del('documents','${d.id}')">🗑</button></td>`:''}
+    </tr>`;}).join('')||`<tr><td colspan="${ed?7:6}"><div class="empty">文書がありません</div></td></tr>`}</tbody></table></div>`;
+}
+function openDoc(id){ curDoc=JSON.parse(JSON.stringify((STORE.documents||[]).find(d=>d.id===id))); render(); }
+function docBuilder(ed){
+  const d=curDoc, t=docTotals(d);
+  const itemRows=d.items.map((it,i)=>`<tr>
+    <td><input value="${esc(it.name)}" placeholder="品目" oninput="docItem(${i},'name',this.value)"></td>
+    <td style="width:70px"><input type="number" value="${it.qty}" oninput="docItem(${i},'qty',this.value)"></td>
+    <td style="width:120px"><input type="number" value="${it.unit}" oninput="docItem(${i},'unit',this.value)"></td>
+    <td class="num" style="width:110px">${yen((+it.qty||0)*(+it.unit||0))}</td>
+    <td style="width:34px"><button class="icon-btn" onclick="docDelItem(${i})">✕</button></td></tr>`).join('');
+  return `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <button class="btn ghost" onclick="curDoc=null;render()">← 一覧へ</button>
+      <button class="btn" onclick="saveDoc()">💾 保存</button>
+      <button class="btn ai" onclick="printDoc()">🖨 PDF印刷</button></div>
+    <div class="two-col" style="grid-template-columns:1fr 1fr;align-items:start">
+      <div class="card">
+        <h3>${esc(d.type)}の内容</h3>
+        <div class="field two"><label>種別 / 文書番号</label>
+          <select onchange="curDoc.type=this.value;render()">${selOpts(['見積書','請求書'],d.type)}</select>
+          <input value="${esc(d.number)}" oninput="curDoc.number=this.value"></div>
+        <div class="field"><label>宛先（会社名）</label><input list="cust_dl" value="${esc(d.client)}" oninput="curDoc.client=this.value"><datalist id="cust_dl">${custNames().map(n=>`<option value="${esc(n)}">`).join('')}</datalist></div>
+        <div class="field two"><label>発行日 / 支払期限</label><input type="date" value="${d.date}" oninput="curDoc.date=this.value"><input type="date" value="${d.due||''}" oninput="curDoc.due=this.value"></div>
+        <label style="font-size:12px;color:var(--muted)">明細</label>
+        <table style="margin:4px 0"><thead><tr><th>品目</th><th>数量</th><th>単価</th><th class="num">金額</th><th></th></tr></thead><tbody>${itemRows}</tbody></table>
+        <button class="btn ghost sm" onclick="docAddItem()">＋ 明細を追加</button>
+        <div class="field two" style="margin-top:12px"><label>消費税率(%) / 状態</label><input type="number" value="${d.taxRate}" oninput="curDoc.taxRate=this.value;render()"><select onchange="curDoc.status=this.value">${selOpts(['作成済み','入金待ち','入金済み'],d.status)}</select></div>
+        <div class="field"><label>備考</label><textarea rows="2" oninput="curDoc.note=this.value">${esc(d.note||'')}</textarea></div>
+      </div>
+      <div><div id="print-area">${docHTML(d)}</div></div>
+    </div>`;
+}
+function docItem(i,k,v){ curDoc.items[i][k]=(k==='name')?v:(+v||0); const cell=document.querySelectorAll('#docs_body tbody tr')[i]; render(); }
+function docAddItem(){ curDoc.items.push({name:'',qty:1,unit:0}); render(); }
+function docDelItem(i){ curDoc.items.splice(i,1); if(!curDoc.items.length)curDoc.items.push({name:'',qty:1,unit:0}); render(); }
+function docHTML(d){
+  const o=STORE.orgprofile||{}; const t=docTotals(d);
+  return `<div class="doc-preview">
+    <h1>${esc(d.type)}</h1>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div><div style="font-size:16px;font-weight:700;border-bottom:2px solid #333;padding-bottom:4px;display:inline-block">${esc(d.client||'　　　　')} 御中</div>
+        <div style="margin-top:14px" class="muted2">下記の通り${d.type==='請求書'?'ご請求':'お見積り'}申し上げます。</div>
+        <div style="margin-top:10px;font-size:18px;font-weight:700">${d.type==='請求書'?'ご請求金額':'お見積金額'} ${yen(t.total)}（税込）</div>
+      </div>
+      <div style="text-align:right;font-size:12px">
+        <div>No. ${esc(d.number)}</div><div>発行日: ${esc(d.date)}</div>${d.due?`<div>${d.type==='請求書'?'支払期限':'有効期限'}: ${esc(d.due)}</div>`:''}
+        <div style="margin-top:10px;font-weight:700">${esc(o.company||'自社')}</div>
+        <div>${esc(o.address||'')}</div><div>${esc(o.tel||'')}</div><div>${esc(o.email||'')}</div>
+      </div>
+    </div>
+    <table><thead><tr><th>品目</th><th class="r">数量</th><th class="r">単価</th><th class="r">金額</th></tr></thead>
+    <tbody>${d.items.map(it=>`<tr><td>${esc(it.name||'')}</td><td class="r">${it.qty}</td><td class="r">${yen(it.unit)}</td><td class="r">${yen((+it.qty||0)*(+it.unit||0))}</td></tr>`).join('')}
+      <tr><td colspan="2"></td><td class="r">小計</td><td class="r">${yen(t.sub)}</td></tr>
+      <tr><td colspan="2"></td><td class="r">消費税(${d.taxRate}%)</td><td class="r">${yen(t.tax)}</td></tr>
+      <tr><td colspan="2"></td><td class="r" style="font-weight:700">合計</td><td class="r" style="font-weight:700">${yen(t.total)}</td></tr>
+    </tbody></table>
+    ${d.note?`<div style="margin-top:12px" class="muted2">備考: ${esc(d.note)}</div>`:''}
+    ${d.type==='請求書'&&o.bank?`<div style="margin-top:10px">お振込先: ${esc(o.bank)}</div>`:''}
+  </div>`;
+}
+async function saveDoc(){ try{ await upsert('documents',JSON.parse(JSON.stringify(curDoc)),curDoc.id); toast('保存しました'); }catch(e){ alert(e.message); } }
+function printDoc(){ printHTML(curDoc.number||curDoc.type,docHTML(curDoc)); }
+function editOrg(){
+  const o=STORE.orgprofile||{};
+  openModal('会社情報（文書に反映）',
+    `${field('会社名','o_c',o.company)}${field('担当者名','o_p',o.person)}
+     ${field('住所','o_a',o.address)}${field('電話','o_t',o.tel)}${field('メール','o_e',o.email)}
+     ${field('振込先','o_b',o.bank)}
+     <div class="field"><label>事業内容</label><textarea id="o_s" rows="2">${esc(o.service||'')}</textarea></div>
+     <div class="field"><label>強み</label><textarea id="o_st" rows="2">${esc(o.strength||'')}</textarea></div>`,
+    async()=>{ const v={company:fv('o_c'),person:fv('o_p'),address:fv('o_a'),tel:fv('o_t'),email:fv('o_e'),bank:fv('o_b'),service:fv('o_s'),strength:fv('o_st'),seal:o.seal||'',logo:o.logo||''};
+      STORE.orgprofile=v; await persist('orgprofile'); closeModal(); render(); toast('会社情報を保存しました'); });
+}
+// ---- 提案・議事録・報告書 ----
+function renderWritingTab(el,ed){
+  el.innerHTML=`
+    <div class="card">
+      <div class="field"><label>文書タイプ</label><select id="wr_type" onchange="wrFields()"><option>提案書</option><option>議事録</option><option>週次報告書</option><option>業務報告書</option></select></div>
+      <div id="wr_dyn"></div>
+      <button class="btn ai" id="wr_gen" onclick="doWriting()">✨ 生成する</button>
+      <button class="btn ghost" onclick="printWriting()" style="margin-left:6px">🖨 PDF印刷</button>
+      <div class="ai-out" id="wr_out"></div>
+    </div>`;
+  wrFields();
+}
+function wrFields(){
+  const t=(document.getElementById('wr_type')||{}).value||'提案書';
+  const el=document.getElementById('wr_dyn'); if(!el)return;
+  if(t==='提案書') el.innerHTML=`${selField('提案先(顧客)','wr_cust','',['',...custNames()])}<div class="field"><label>提案テーマ・背景</label><textarea id="wr_in" rows="3" placeholder="例:採用業務のBPO化。月80時間の工数削減を実現したい"></textarea></div>`;
+  else if(t==='議事録') el.innerHTML=`<div class="field"><label>会議のメモ・要点（箇条書きでOK）</label><textarea id="wr_in" rows="5" placeholder="日時/出席者/決定事項/ToDoなどを貼り付け"></textarea></div>`;
+  else el.innerHTML=`<div class="field"><label>報告内容のメモ（実績・課題など）</label><textarea id="wr_in" rows="5" placeholder="今週やったこと、数字、課題を箇条書きで"></textarea></div>`;
+}
+async function doWriting(){
+  const t=fv('wr_type'); const cust=(STORE.customers||[]).find(c=>c.name===(document.getElementById('wr_cust')||{}).value);
+  const sys=`あなたはビジネス文書作成のプロです。日本語で、体裁の整った${t}を作成します。見出しを使い、そのまま提出できる品質で。\n【自社情報】\n${orgCtx()}`;
+  const usr=`${t}を作成してください。\n${cust?`提案先:${cust.name}（${cust.status}/${cust.memo||''}）\n`:''}入力メモ:\n${fv('wr_in')||'（メモなし）'}\n今日:${todayISO()}`;
+  await aiRun(document.getElementById('wr_gen'),'wr_out',sys,usr,3000);
+}
+function printWriting(){ const out=document.getElementById('wr_out'); const txt=out.innerText.replace(/📋 コピー$/,'').trim(); if(!txt){toast('先に生成してください');return;} printHTML((document.getElementById('wr_type')||{}).value||'文書',`<div class="doc-preview" style="white-space:pre-wrap">${esc(txt)}</div>`); }
+// ---- スライド資料 ----
+let slideData=null;
+function renderSlidesTab(el,ed){
+  el.innerHTML=`
+    <div class="card">
+      <div class="field"><label>資料タイトル</label><input id="sl_title" placeholder="例:サービス提案資料"></div>
+      <div class="field"><label>スライドにしたい内容・構成</label><textarea id="sl_in" rows="4" placeholder="例:当社のBPOサービスを紹介する提案資料。表紙/課題/解決策/導入効果/料金/導入の流れ/まとめ の7枚"></textarea></div>
+      <div class="field two"><label>枚数の目安 / トーン</label><input id="sl_n" type="number" value="6"><select id="sl_tone"><option>ビジネス・簡潔</option><option>熱意・提案重視</option><option>丁寧・説明的</option></select></div>
+      <button class="btn ai" id="sl_gen" onclick="doSlides()">✨ スライドを生成</button>
+      <div class="ai-out" id="sl_status"></div>
+      <div id="sl_preview"></div>
+    </div>`;
+  if(slideData) renderSlidePreview();
+}
+async function doSlides(){
+  const title=fv('sl_title')||'プレゼン資料'; const btn=document.getElementById('sl_gen'); const st=document.getElementById('sl_status');
+  const orig=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spin"></span> 生成中...'; st.className='ai-out show'; st.textContent='AIがスライドを構成中…';
+  try{
+    const raw=await aiComplete(
+      `あなたはプレゼン資料構成のプロです。指定された内容から、スライドごとの構成をJSONで返します。各スライドは title と bullets(3-5個の短い箇条書き) を持ちます。出力はJSON配列のみ（説明・コードフェンス不要）。例:[{"title":"表紙","bullets":["サービス名","提案先","日付"]}]`,
+      `タイトル:${title}\n枚数の目安:${fnum('sl_n')||6}\nトーン:${fv('sl_tone')}\n内容:\n${fv('sl_in')||'一般的な提案資料'}`,3000);
+    let json=raw.trim().replace(/^```json?/i,'').replace(/```$/,'').trim();
+    const m=json.match(/\[[\s\S]*\]/); if(m)json=m[0];
+    slideData={title,slides:JSON.parse(json)};
+    st.className='ai-out'; st.textContent='';
+    renderSlidePreview();
+  }catch(e){ st.className='ai-out show'; st.textContent='⚠️ '+(e.message||'生成に失敗しました。もう一度お試しください。'); }
+  finally{ btn.disabled=false; btn.innerHTML=orig; }
+}
+function renderSlidePreview(){
+  const el=document.getElementById('sl_preview'); if(!el||!slideData)return;
+  el.innerHTML=`<div style="display:flex;gap:8px;margin:14px 0"><button class="btn" onclick="dlPptx()">⬇️ PPTXダウンロード</button><button class="btn ghost" onclick="printSlides()">🖨 PDF印刷</button></div>
+    <div id="print-area"><div class="slide-deck">${slideData.slides.map(s=>`<div class="slide"><h2>${esc(s.title||'')}</h2><ul>${(s.bullets||[]).map(b=>`<li>${esc(b)}</li>`).join('')}</ul></div>`).join('')}</div></div>`;
+}
+async function dlPptx(){
+  try{
+    const res=await fetch('/api/pptx',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(slideData)});
+    if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error(e.error||('生成失敗 '+res.status)); }
+    const blob=await res.blob(); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=(slideData.title||'presentation')+'.pptx'; a.click(); toast('PPTXをダウンロードしました');
+  }catch(e){ alert(e.message); }
+}
+function printSlides(){ printHTML(slideData.title,`<div class="slide-deck">${slideData.slides.map(s=>`<div class="slide"><h2>${esc(s.title||'')}</h2><ul>${(s.bullets||[]).map(b=>`<li>${esc(b)}</li>`).join('')}</ul></div>`).join('')}</div>`); }
+
+//==================================================================
+// 請求・入金管理
+//==================================================================
+function renderBilling(c,p){
+  const ed=canEdit('billing');
+  setHeader(p.title,p.sub,'');
+  const invs=(STORE.documents||[]).filter(d=>d.type==='請求書').sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const paid=invs.filter(d=>d.status==='入金済み'), unpaid=invs.filter(d=>d.status!=='入金済み');
+  const overdue=unpaid.filter(d=>d.due&&d.due<todayISO());
+  const amt=d=>docTotals(d).total;
+  c.innerHTML=`
+    <div class="grid kpis">
+      ${kpi('請求件数','🧾',invs.length,'')}${kpi('入金済み','✅',yen(paid.reduce((a,d)=>a+amt(d),0)),`<span class="muted">${paid.length}件</span>`)}
+      ${kpi('未入金','⏳',yen(unpaid.reduce((a,d)=>a+amt(d),0)),`<span class="${unpaid.length?'down':'muted'}">${unpaid.length}件</span>`)}
+      ${kpi('入金期限超過','⚠️',overdue.length,overdue.length?'<span class="down">要催促</span>':'<span class="up">なし</span>')}
+    </div><div style="height:16px"></div>
+    ${overdue.length?`<div class="alert bad">⚠️ 入金期限を過ぎた請求: ${overdue.map(d=>esc(d.client)).join('、')}</div>`:''}
+    <div class="card"><table>
+    <thead><tr><th>番号</th><th>宛先</th><th>発行日</th><th>支払期限</th><th class="num">金額</th><th>状態</th><th>入金日</th>${ed?'<th></th>':''}</tr></thead>
+    <tbody>${invs.map(d=>{const od=d.status!=='入金済み'&&d.due&&d.due<todayISO();return `<tr>
+      <td><b>${esc(d.number)}</b></td><td>${esc(d.client)}</td><td class="muted" style="font-size:12px">${esc(d.date)}</td>
+      <td class="${od?'down':'muted'}" style="font-size:12px">${esc(d.due||'—')}${od?' ⚠️':''}</td><td class="num">${yen(amt(d))}</td>
+      <td><span class="pill ${d.status==='入金済み'?'ok':'warn'}">${esc(d.status)}</span></td>
+      <td class="muted" style="font-size:12px">${esc(d.paidDate||'—')}</td>
+      ${ed?`<td class="row-actions" style="white-space:nowrap">
+        ${d.status==='入金済み'?`<button class="icon-btn" title="未入金に戻す" onclick="billMark('${d.id}',false)">↩</button>`:`<button class="icon-btn" title="入金済みにする" onclick="billMark('${d.id}',true)">✓</button>`}
+        ${od?`<button class="icon-btn" title="AI催促文" onclick="billDun('${d.id}')">🤖</button>`:''}</td>`:''}
+    </tr>`;}).join('')||`<tr><td colspan="${ed?8:7}"><div class="empty">請求書がありません（「AI文書作成」で作成できます）</div></td></tr>`}</tbody></table></div>
+    <div class="ai-out" id="bill_ai"></div>`;
+}
+function billMark(id,paid){ const d=(STORE.documents||[]).find(x=>x.id===id); if(!d)return; d.status=paid?'入金済み':'入金待ち'; d.paidDate=paid?todayISO():''; upsert('documents',d,id); }
+async function billDun(id){
+  const d=(STORE.documents||[]).find(x=>x.id===id); const out=document.getElementById('bill_ai'); out.className='ai-out show'; out.textContent='生成中…';
+  try{ const t=await aiComplete(
+    `あなたは経理担当です。入金期限を過ぎた請求への丁寧で角の立たない入金催促メールを日本語で作成します。取引関係を損なわない配慮を。\n【自社情報】\n${orgCtx()}`,
+    `請求番号:${d.number}\n宛先:${d.client}\n金額:${yen(docTotals(d).total)}\n支払期限:${d.due}（超過中）\n今日:${todayISO()}\n出力は催促メール本文のみ（件名から）。`,1500);
+    out.innerHTML=`<div class="ai-label">💌 ${esc(d.client)}への入金催促文</div>\n`+esc(t)+copyBtn();
+  }catch(e){ out.textContent='⚠️ '+e.message; }
+}
+
+//==================================================================
+// 経費精算
+//==================================================================
+function renderExpenses(c,p){
+  const ed=canEdit('expenses');
+  setHeader(p.title,p.sub,ed?`<button class="btn" onclick="editExpense()">＋ 経費を申請</button>`:roBadge());
+  const ex=(STORE.expenses||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const sumBy=st=>ex.filter(e=>e.status===st).reduce((a,e)=>a+(+e.amount||0),0);
+  c.innerHTML=`
+    <div class="grid kpis">
+      ${kpi('申請件数','🧾',ex.length,'')}${kpi('申請中','⏳',yen(sumBy('申請中')),`<span class="muted">${ex.filter(e=>e.status==='申請中').length}件</span>`)}
+      ${kpi('承認済み','✅',yen(sumBy('承認済み')),'')}${kpi('今月合計','📅',yen(ex.filter(e=>(e.date||'').slice(0,7)===todayISO().slice(0,7)).reduce((a,e)=>a+(+e.amount||0),0)),'')}
+    </div><div style="height:16px"></div>
+    <div class="card"><table>
+    <thead><tr><th>日付</th><th>申請者</th><th>科目</th><th>事業</th><th class="num">金額</th><th>内容</th><th>状態</th>${ed?'<th></th>':''}</tr></thead>
+    <tbody>${ex.map(e=>`<tr>
+      <td class="muted" style="font-size:12px">${esc(e.date)}</td><td>${esc(e.applicant)}</td><td>${esc(e.category)}</td><td><span class="muted">${esc(e.biz||'—')}</span></td>
+      <td class="num">${yen(e.amount)}</td><td class="muted" style="font-size:12px;max-width:180px">${esc(e.note||'')}</td>
+      <td><span class="pill ${e.status==='承認済み'?'ok':e.status==='差戻し'?'bad':'warn'}">${esc(e.status)}</span></td>
+      ${ed?`<td class="row-actions" style="white-space:nowrap">
+        ${e.status==='申請中'?`<button class="icon-btn" title="承認" onclick="expSet('${e.id}','承認済み')">✓</button><button class="icon-btn" title="差戻し" onclick="expSet('${e.id}','差戻し')">↩</button>`:''}
+        <button class="icon-btn" onclick="editExpense('${e.id}')">✏️</button><button class="icon-btn" onclick="del('expenses','${e.id}')">🗑</button></td>`:''}
+    </tr>`).join('')||`<tr><td colspan="${ed?8:7}"><div class="empty">経費申請がありません</div></td></tr>`}</tbody></table></div>`;
+}
+function expSet(id,st){ const e=(STORE.expenses||[]).find(x=>x.id===id); if(!e)return; e.status=st; upsert('expenses',e,id); }
+function editExpense(id){
+  const x=(STORE.expenses||[]).find(e=>e.id===id)||{date:todayISO(),applicant:ME.display_name,category:'交通費',amount:0,biz:'全社',note:'',status:'申請中'};
+  const bizOpts=['全社',...(STORE.businesses||[]).map(z=>z.name)];
+  openModal(id?'経費を編集':'経費を申請',
+    `${field('日付','f_d',x.date,'date')}${field('申請者','f_ap',x.applicant)}
+     ${selField('科目','f_cat',x.category,['交通費','会議費','接待交際費','消耗品費','通信費','広告宣伝費','旅費','その他'])}
+     ${field('金額(円)','f_amt',x.amount,'number')}${selField('事業','f_biz',x.biz||'全社',bizOpts)}
+     <div class="field"><label>内容</label><input id="f_note" value="${esc(x.note||'')}"></div>
+     ${ME.role!=='viewer'?selField('状態','f_st',x.status,['申請中','承認済み','差戻し']):''}`,
+    ()=>upsert('expenses',{id:id||b(),date:fv('f_d'),applicant:fv('f_ap'),category:fv('f_cat'),amount:fnum('f_amt'),biz:fv('f_biz'),note:fv('f_note'),status:document.getElementById('f_st')?fv('f_st'):x.status,receipt:x.receipt||''},id));
+}
+
+//==================================================================
+// 勤怠・工数
+//==================================================================
+function renderTimesheets(c,p){
+  const ed=canEdit('timesheets');
+  setHeader(p.title,p.sub,ed?`<button class="btn" onclick="editTs()">＋ 工数を記録</button>`:roBadge());
+  const ts=(STORE.timesheets||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const today=ts.filter(t=>t.date===todayISO()).reduce((a,t)=>a+(+t.hours||0),0);
+  const wkStart=addDays(-((new Date().getDay()+6)%7));
+  const week=ts.filter(t=>t.date>=wkStart).reduce((a,t)=>a+(+t.hours||0),0);
+  const byBiz={}; ts.filter(t=>t.date>=wkStart).forEach(t=>byBiz[t.biz]=(byBiz[t.biz]||0)+(+t.hours||0));
+  c.innerHTML=`
+    <div class="grid kpis">
+      ${kpi('本日の工数','⏱️',today.toFixed(1)+'h','')}${kpi('今週の工数','📅',week.toFixed(1)+'h','')}
+      ${kpi('記録件数','📋',ts.length,'')}${kpi('稼働事業数','🏢',Object.keys(byBiz).length,'')}
+    </div><div style="height:16px"></div>
+    ${Object.keys(byBiz).length?`<div class="card"><h3>今週の事業別工数</h3>${Object.entries(byBiz).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px"><span>${esc(k)}</span><b>${v.toFixed(1)}h</b></div><div class="progress"><i style="width:${Math.min(v/week*100,100)}%;background:#4f8cff"></i></div></div>`).join('')}</div><div style="height:16px"></div>`:''}
+    <div class="card"><table>
+    <thead><tr><th>日付</th><th>担当</th><th>事業</th><th>作業内容</th><th class="num">時間</th>${ed?'<th></th>':''}</tr></thead>
+    <tbody>${ts.map(t=>`<tr>
+      <td class="muted" style="font-size:12px">${esc(t.date)}</td><td>${esc(t.member)}</td><td><span class="muted">${esc(t.biz)}</span></td>
+      <td>${esc(t.task)}</td><td class="num">${(+t.hours||0).toFixed(1)}h</td>
+      ${ed?`<td class="row-actions" style="white-space:nowrap"><button class="icon-btn" onclick="editTs('${t.id}')">✏️</button><button class="icon-btn" onclick="del('timesheets','${t.id}')">🗑</button></td>`:''}
+    </tr>`).join('')||`<tr><td colspan="${ed?6:5}"><div class="empty">工数記録がありません</div></td></tr>`}</tbody></table></div>`;
+}
+function editTs(id){
+  const x=(STORE.timesheets||[]).find(t=>t.id===id)||{date:todayISO(),member:ME.display_name,biz:'全社',task:'',hours:1,note:''};
+  const bizOpts=['全社',...(STORE.businesses||[]).map(z=>z.name)];
+  openModal(id?'工数を編集':'工数を記録',
+    `${field('日付','f_d',x.date,'date')}${field('担当者','f_m',x.member)}${selField('事業','f_biz',x.biz,bizOpts)}
+     ${field('作業内容','f_t',x.task)}${field('時間(h)','f_h',x.hours,'number')}`,
+    ()=>upsert('timesheets',{id:id||b(),date:fv('f_d'),member:fv('f_m'),biz:fv('f_biz'),task:fv('f_t'),hours:fnum('f_h'),note:x.note||''},id));
+}
+
+//==================================================================
+// 定型リマインド
+//==================================================================
+function renderReminders(c,p){
+  const ed=canEdit('reminders');
+  setHeader(p.title,p.sub,ed?`<button class="btn" onclick="editRem()">＋ リマインドを追加</button>`:roBadge());
+  const rs=(STORE.reminders||[]).slice().sort((a,b)=>(a.next||'9999').localeCompare(b.next||'9999'));
+  const due=rs.filter(r=>r.active&&r.next&&r.next<=todayISO());
+  c.innerHTML=`
+    <div class="grid kpis">
+      ${kpi('登録件数','🔔',rs.length,'')}${kpi('期日到来','⚠️',due.length,due.length?'<span class="down">要対応</span>':'<span class="up">なし</span>')}
+      ${kpi('有効','✅',rs.filter(r=>r.active).length,'')}${kpi('今月','📅',rs.filter(r=>(r.next||'').slice(0,7)===todayISO().slice(0,7)).length,'')}
+    </div><div style="height:16px"></div>
+    <div class="card"><table>
+    <thead><tr><th>状態</th><th>タイトル</th><th>周期</th><th>次回期日</th><th>分類</th><th>メモ</th>${ed?'<th></th>':''}</tr></thead>
+    <tbody>${rs.map(r=>{const od=r.active&&r.next&&r.next<=todayISO();return `<tr style="${r.active?'':'opacity:.5'}">
+      <td>${r.active?(od?'<span class="pill warn">期日</span>':'<span class="pill ok">有効</span>'):'<span class="pill muted">停止</span>'}</td>
+      <td><b>${esc(r.title)}</b></td><td><span class="muted">${esc(r.cycle)}${r.day?` ${r.day}日`:''}</span></td>
+      <td class="${od?'down':'muted'}" style="font-size:12.5px">${esc(r.next||'—')}${od?' ⚠️':''}</td>
+      <td><span class="pill muted">${esc(r.category||'—')}</span></td><td class="muted" style="font-size:12px;max-width:180px">${esc(r.note||'')}</td>
+      ${ed?`<td class="row-actions" style="white-space:nowrap">
+        ${od?`<button class="icon-btn" title="完了→次回へ" onclick="remDone('${r.id}')">✓</button>`:''}
+        <button class="icon-btn" title="${r.active?'停止':'再開'}" onclick="remToggle('${r.id}')">${r.active?'⏸':'▶'}</button>
+        <button class="icon-btn" onclick="editRem('${r.id}')">✏️</button><button class="icon-btn" onclick="del('reminders','${r.id}')">🗑</button></td>`:''}
+    </tr>`;}).join('')||`<tr><td colspan="${ed?7:6}"><div class="empty">リマインドがありません</div></td></tr>`}</tbody></table></div>`;
+}
+function nextMonthly(day){ const d=new Date(); day=Math.max(1,Math.min(28,+day||1)); if(d.getDate()>day)d.setMonth(d.getMonth()+1); d.setDate(day); return d.toISOString().slice(0,10); }
+function nextByCycle(cycle,day,from){ const base=from?new Date(from):new Date(); if(cycle==='毎週'){base.setDate(base.getDate()+7);} else if(cycle==='毎日'){base.setDate(base.getDate()+1);} else if(cycle==='四半期'){base.setMonth(base.getMonth()+3);base.setDate(Math.max(1,Math.min(28,+day||1)));} else {base.setMonth(base.getMonth()+1);base.setDate(Math.max(1,Math.min(28,+day||1)));} return base.toISOString().slice(0,10); }
+function remDone(id){ const r=(STORE.reminders||[]).find(x=>x.id===id); if(!r)return; r.next=nextByCycle(r.cycle,r.day,r.next); upsert('reminders',r,id); toast('次回期日に更新しました'); }
+function remToggle(id){ const r=(STORE.reminders||[]).find(x=>x.id===id); if(!r)return; r.active=!r.active; upsert('reminders',r,id); }
+function editRem(id){
+  const x=(STORE.reminders||[]).find(r=>r.id===id)||{title:'',cycle:'毎月',day:25,next:nextMonthly(25),category:'経理',note:'',active:true};
+  openModal(id?'リマインドを編集':'リマインドを追加',
+    `${field('タイトル','f_t',x.title)}
+     <div class="field two"><label>周期 / 日</label><select id="f_cyc">${selOpts(['毎日','毎週','毎月','四半期'],x.cycle)}</select><input id="f_day" type="number" value="${x.day||25}"></div>
+     ${field('次回期日','f_next',x.next,'date')}${selField('分類','f_cat',x.category||'経理',['経理','営業','契約','人事','総務','その他'])}
+     <div class="field"><label>メモ</label><input id="f_note" value="${esc(x.note||'')}"></div>`,
+    ()=>upsert('reminders',{id:id||b(),title:fv('f_t'),cycle:fv('f_cyc'),day:fnum('f_day'),next:fv('f_next'),category:fv('f_cat'),note:fv('f_note'),active:x.active!==false},id));
+}
+
+//==================================================================
+// 管理者：AI・連携の設定（サイドバー「アカウント管理」の下に統合）
+//==================================================================
+async function openIntegrations(){
+  let s={}; try{ s=await api('GET','/api/integrations'); }catch(e){ alert(e.message); return; }
+  const lock=k=>s.env_locked&&s.env_locked[k]?' <span class="pill muted" style="font-size:10px">環境変数で設定済</span>':'';
+  openModal('AI・外部連携の設定',
+    `<div class="alert info" style="font-size:12.5px">APIキー等はこのサーバー内にのみ保存され、画面には表示されません。空欄のまま保存すると変更しません。環境変数（ANTHROPIC_API_KEY 等）が優先されます。</div>
+     <div class="field"><label>Claude APIキー ${s.ai?'<span class="pill ok" style="font-size:10px">設定済</span>':''}${lock('ai_key')}</label><input id="i_ai" type="password" placeholder="${s.ai?'●●●●（変更する場合のみ入力）':'sk-ant-...'}"></div>
+     <div class="muted" style="font-size:11px;margin:-6px 0 12px">モデル: ${esc(s.model||'')}（環境変数 CLAUDE_MODEL で変更可）</div>
+     <hr style="border-color:var(--line);margin:10px 0">
+     <div class="field"><label>Chatwork APIトークン ${s.chatwork?'<span class="pill ok" style="font-size:10px">設定済</span>':''}${lock('chatwork_token')}</label><input id="i_cw" type="password" placeholder="${s.chatwork?'●●●●':'Chatworkの個人トークン'}"></div>
+     <div class="field"><label>Slack Botトークン ${s.slack?'<span class="pill ok" style="font-size:10px">設定済</span>':''}${lock('slack_token')}</label><input id="i_sl" type="password" placeholder="${s.slack?'●●●●':'xoxb-...'}"></div>
+     <div class="field two"><label>Gmailアドレス / アプリパスワード ${s.gmail?'<span class="pill ok" style="font-size:10px">設定済</span>':''}</label><input id="i_gm_a" placeholder="you@gmail.com" value="${esc(s.gmail_address||'')}"><input id="i_gm_p" type="password" placeholder="${s.gmail?'●●●●':'アプリパスワード16桁'}"></div>
+     <div class="muted" style="font-size:11px">※ Slackはbot tokenに im:history,im:read,users:read が必要。GmailはIMAP有効化＋アプリパスワードを使用。`,
+    async()=>{ const body={}; const m={i_ai:'ai_key',i_cw:'chatwork_token',i_sl:'slack_token',i_gm_p:'gmail_password'};
+      Object.entries(m).forEach(([el,k])=>{ const v=fv(el); if(v)body[k]=v; });
+      const ga=fv('i_gm_a'); if(ga!==undefined)body.gmail_address=ga;
+      try{ await api('POST','/api/integrations',body); closeModal(); toast('連携設定を保存しました'); }catch(e){ alert(e.message); } });
 }
 
 //==================================================================

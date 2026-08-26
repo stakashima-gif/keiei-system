@@ -222,6 +222,9 @@ const PAGES = [
   {id:'people', icon:'👥', name:'人材管理', title:'人材状況', sub:'人員構成・人件費・評価', sect:'業務'},
   {id:'recruits', icon:'🧑‍💼', name:'採用管理', title:'採用管理', sub:'求職者管理・5項目スコア評価・Airワーク連携', sect:'業務'},
   {id:'memos', icon:'📝', name:'打ち合わせメモ', title:'打ち合わせメモ', sub:'商談・打ち合わせの記録。クライアント名で検索できます', sect:'業務'},
+  {id:'placements', icon:'🤝', name:'人材提案管理', title:'人材提案・案件管理', sub:'候補者ごとの提案状況・リードタイム・売上・報酬・粗利を管理', sect:'業務'},
+  {id:'clients', icon:'📇', name:'クライアント管理', title:'クライアント管理', sub:'取引先の基本情報・ステータス・担当を一元管理。契約/議事録/タスク/案件を横断表示', sect:'業務'},
+  {id:'workspace', icon:'🗂️', name:'ワークスペース', title:'クライアント・ワークスペース', sub:'クライアント別に議事録とタスクを集約。高嶋・早田で進捗を共有', sect:'業務'},
   {id:'tools', icon:'🔗', name:'ツール', title:'ツール一元管理', sub:'よく使うツールへのリンク集', sect:'ツール'},
   {id:'inbox', icon:'📩', name:'返信ボックス', title:'返信ボックス', sub:'メール・Slack・Chatworkの要返信を一覧。AIが返信案を作成', sect:'AI業務サポート'},
   {id:'salesai', icon:'🤝', name:'営業サポート', title:'営業サポート', sub:'顧客・商談の管理とAIによる次アクション提案・文面作成', sect:'AI業務サポート'},
@@ -231,7 +234,7 @@ const PAGES = [
   {id:'timesheets', icon:'⏱️', name:'勤怠・工数', title:'勤怠・工数', sub:'日次の作業時間を事業・案件別に記録', sect:'AI業務サポート'},
   {id:'reminders', icon:'🔔', name:'定型リマインド', title:'定型リマインド', sub:'月次の定型業務を期日管理', sect:'AI業務サポート'},
 ];
-const PAGE_WRITE={business:['businesses'],sales:['sales'],finance:['finance'],breakeven:['cost'],tasks:['tasks'],contracts:['contracts'],people:['people'],tools:['tools'],recruits:['recruits'],cashflow:['cashflow'],memos:['memos'],dashboard:[],analysis:[],
+const PAGE_WRITE={business:['businesses'],sales:['sales','salesdeals'],finance:['finance'],breakeven:['cost'],tasks:['tasks'],contracts:['contracts'],people:['people'],tools:['tools'],recruits:['recruits'],cashflow:['cashflow'],memos:['memos'],placements:['placements'],workspace:['wsclients','wstasks','wsnotes'],clients:['clients'],dashboard:[],analysis:[],
   inbox:['inbox'],salesai:['deals','customers'],docs:['documents','orgprofile'],billing:['documents'],expenses:['expenses'],timesheets:['timesheets'],reminders:['reminders']};
 const PAGE_NAME=Object.fromEntries(PAGES.map(p=>[p.id,p.name]));
 
@@ -397,7 +400,7 @@ function breakeven(){ const {fixedMonthly,variableRate}=STORE.cost||{fixedMonthl
 function render(){
   markNav();
   const c=document.getElementById('content');
-  const map={dashboard:renderDashboard,analysis:renderAnalysis,breakeven:renderBreakeven,business:renderBusiness,tools:renderTools,recruits:renderRecruits,memos:renderMemos,
+  const map={dashboard:renderDashboard,analysis:renderAnalysis,breakeven:renderBreakeven,business:renderBusiness,tools:renderTools,recruits:renderRecruits,memos:renderMemos,placements:renderPlacements,workspace:renderWorkspace,clients:renderClients,
     sales:renderSales,finance:renderFinance,cashflow:renderCashflow,tasks:renderTasks,contracts:renderContracts,people:renderPeople,users:renderUsers,
     inbox:renderInbox,salesai:renderSalesai,docs:renderDocs,billing:renderBilling,expenses:renderExpenses,timesheets:renderTimesheets,reminders:renderReminders};
   const p=PAGES.find(x=>x.id===current);
@@ -539,8 +542,9 @@ function renderSales(c,p){
   let cols=presentSalesCols(s); if(!cols.length) cols=salesCols();
   const total=sum(s,x=>rowTotal(x));
   const maxMonth=s.length?months[s.indexOf(s.reduce((a,bb)=>rowTotal(bb)>rowTotal(a)?bb:a))]:'—';
+  const hasDeals=(STORE.salesdeals||[]).length>0;
   setHeader(scoped?`売上管理（${scoped}）`:p.title, scoped?`${scoped}の売上推移`:p.sub,
-    (ed && !scoped)?`<button class="btn ghost" onclick="editSales()">✏ 月次データを編集</button>`:(scoped?`<span class="pill info">自事業のみ表示</span>`:roBadge()));
+    (ed && !scoped)?`<button class="btn" onclick="sdEditDeal()">＋ 案件を追加</button>${hasDeals?'':`<button class="btn ghost" onclick="editSales()">✏ 月次を直接入力</button>`}`:(scoped?`<span class="pill info">自事業のみ表示</span>`:roBadge()));
   // 構成比チャート用セグメント
   const seg=cols.map(col=>({label:col.label,value:sum(s,x=>x[col.key]||0),color:col.color}));
   c.innerHTML=`
@@ -554,8 +558,158 @@ function renderSales(c,p){
     <thead><tr><th>月</th>${cols.map(col=>`<th class="num">${col.label}</th>`).join('')}${cols.length>1?'<th class="num">合計</th>':''}</tr></thead>
     <tbody>${s.map((x,i)=>`<tr><td>${months[i]}</td>${cols.map(col=>`<td class="num">${yen(x[col.key]||0)}</td>`).join('')}${cols.length>1?`<td class="num"><b>${yen(cols.reduce((a,col)=>a+(x[col.key]||0),0))}</b></td>`:''}</tr>`).join('')}
     <tr style="border-top:2px solid var(--line)"><td><b>合計</b></td>${cols.map(col=>`<td class="num"><b>${yen(sum(s,x=>x[col.key]||0))}</b></td>`).join('')}${cols.length>1?`<td class="num"><b>${yen(total)}</b></td>`:''}</tr>
-    </tbody></table></div>`;
+    </tbody></table>
+    ${hasDeals?`<p class="muted" style="font-size:12px;margin:8px 0 0">※ 案件を登録した「月×事業」は下の受注案件の単価合計が売上になります（ダッシュボード・経営状況分析・財務に直結）。案件が無い箇所は従来の月次入力値のままです。</p>`:(ed&&!scoped?`<p class="muted" style="font-size:12px;margin:8px 0 0">💡「＋ 案件を追加」で案件（クライアント・単価・粗利・事業・計上月）を登録すると、その月×事業の売上に自動集計されます。</p>`:'')}</div>
+    ${salesDealsCard(ed,scoped)}`;
 }
+// 受注案件（売上明細）カード。案件の単価合計が月・事業別の売上に直結する
+function dealGp(d){ return (Number(d.revenue)||0)-(Number(d.cost)||0); }
+function dealGpr(d){ const r=Number(d.revenue)||0; return r?dealGp(d)/r*100:0; }
+function dealGpLabel(d){ const r=Number(d.revenue)||0; return `${yen(dealGp(d))}（${r?dealGpr(d).toFixed(1):0}%）`; }
+function salesDealsCard(ed,scoped){
+  let list=(STORE.salesdeals||[]).slice();
+  if(scoped) list=list.filter(d=>d.biz===scoped);
+  list.sort((a,b)=>((a.month||0)-(b.month||0))||String(a.client||'').localeCompare(b.client||''));
+  const canEd=ed&&!scoped;
+  const rows=list.map(d=>`<tr>
+    <td>${months[d.month]||'—'}</td><td><span class="muted">${escapeHtml(d.biz||'')}</span></td>
+    <td><b>${escapeHtml(d.title||'')}</b></td>
+    <td>${escapeHtml(d.client||'')}${d.contact?`<div class="muted" style="font-size:11px">${escapeHtml(d.contact)}</div>`:''}</td>
+    <td class="muted">${escapeHtml(d.rep||'')}</td>
+    <td class="num">${yen(d.revenue)}</td><td class="num">${yen(d.cost)}</td>
+    <td class="num ${dealGp(d)>=0?'up':'down'}"><b>${yen(dealGp(d))}</b></td><td class="num">${(Number(d.revenue)?dealGpr(d):0).toFixed(1)}%</td>
+    ${canEd?`<td class="row-actions"><button class="icon-btn" onclick="sdEditDeal('${d.id}')">✏️</button><button class="icon-btn" onclick="delDeal('${d.id}')">🗑</button></td>`:''}
+  </tr>`).join('');
+  const tRev=sum(list,d=>Number(d.revenue)||0), tCost=sum(list,d=>Number(d.cost)||0), tGp=tRev-tCost;
+  return `<div style="height:16px"></div><div class="card"><h3>受注案件（売上明細）<span class="pill muted">${list.length}件</span></h3>
+    <div style="overflow-x:auto"><table>
+    <thead><tr><th>計上月</th><th>事業</th><th>案件名</th><th>クライアント</th><th>営業担当</th><th class="num">単価/売上</th><th class="num">支払い</th><th class="num">粗利</th><th class="num">粗利率</th>${canEd?'<th></th>':''}</tr></thead>
+    <tbody>${rows||`<tr><td colspan="${canEd?10:9}"><div class="empty">案件がありません。${canEd?'「＋ 案件を追加」から登録してください。':''}</div></td></tr>`}
+    ${list.length?`<tr style="border-top:2px solid var(--line)"><td colspan="5"><b>合計</b></td><td class="num"><b>${yen(tRev)}</b></td><td class="num"><b>${yen(tCost)}</b></td><td class="num ${tGp>=0?'up':'down'}"><b>${yen(tGp)}</b></td><td class="num"><b>${tRev?(tGp/tRev*100).toFixed(1):0}%</b></td>${canEd?'<td></td>':''}</tr>`:''}
+    </tbody></table></div></div>`;
+}
+// 案件から売上を再計算。案件がある「月×事業」だけ案件合計に切替え、
+// 案件が無い箇所は従来の月次入力値を保持する（既存売上を突然0にしない）。
+function recomputeSalesFromDeals(){
+  const biz=STORE.businesses||[]; const nameToId={}; biz.forEach(z=>nameToId[z.name]=z.id);
+  const prev=STORE.sales||[];
+  const dealSum={};   // "月_事業ID" -> 単価合計
+  (STORE.salesdeals||[]).forEach(d=>{ const m=Number(d.month), bid=nameToId[d.biz];
+    if(!(m>=0&&m<12)||!bid) return; const k=m+'_'+bid; dealSum[k]=(dealSum[k]||0)+(Number(d.revenue)||0); });
+  const sales=[]; for(let i=0;i<12;i++){ const row={month:i,total:0};
+    biz.forEach(z=>{ const k=i+'_'+z.id;
+      const val=(k in dealSum)?dealSum[k]:(((prev[i]||{})[z.id])||0);  // 案件があれば案件合計、無ければ従来値
+      row[z.id]=val; row.total+=val; });
+    sales.push(row); }
+  STORE.sales=sales;
+}
+function sdEditDeal(id){
+  const bizNames=(STORE.businesses||[]).map(z=>z.name);
+  if(!bizNames.length){ alert('先に「事業管理」で事業を登録してください'); return; }
+  const x=(STORE.salesdeals||[]).find(z=>z.id===id)||{month:(new Date()).getMonth(),biz:bizNames[0],client:'',contact:'',title:'',rep:'',revenue:0,cost:0,note:''};
+  openModal(id?'案件を編集':'案件を追加',`
+    <div class="field two"><label>計上月 / 事業</label>
+      <select id="d_month">${months.map((m,i)=>`<option value="${i}"${i===Number(x.month)?' selected':''}>${m}</option>`).join('')}</select>
+      <select id="d_biz">${bizNames.map(o=>`<option${o===x.biz?' selected':''}>${o}</option>`).join('')}</select></div>
+    ${field('案件名','d_title',escapeHtml(x.title||''))}
+    <div class="field two"><label>クライアント / クライアント担当者</label>
+      <input id="d_client" value="${escapeHtml(x.client||'')}" placeholder="株式会社◯◯"><input id="d_contact" value="${escapeHtml(x.contact||'')}" placeholder="佐藤様"></div>
+    ${field('営業担当者','d_rep',escapeHtml(x.rep||''))}
+    <div class="field two"><label>単価/売上(円) / 支払い(円)</label>
+      <input id="d_rev" type="number" value="${x.revenue||0}" oninput="dealGpPreview()"><input id="d_cost" type="number" value="${x.cost||0}" oninput="dealGpPreview()"></div>
+    <div class="field"><label>粗利 / 粗利率（自動計算）</label><input id="d_gp" value="${dealGpLabel(x)}" disabled style="opacity:.75"></div>
+    ${field('メモ','d_note',escapeHtml(x.note||''))}`,
+    async()=>{
+      const obj={id:id||b(),month:Number(fv('d_month')),biz:fv('d_biz'),title:fv('d_title').trim(),
+        client:fv('d_client').trim(),contact:fv('d_contact').trim(),rep:fv('d_rep').trim(),
+        revenue:Math.abs(fnum('d_rev')),cost:Math.abs(fnum('d_cost')),note:fv('d_note')};
+      if(!obj.title&&!obj.client) throw new Error('案件名かクライアントを入力してください');
+      const r=await api('POST','/api/store/salesdeals/item',{value:obj}); REV=r.rev;
+      STORE.salesdeals=STORE.salesdeals||[]; const i=STORE.salesdeals.findIndex(z=>z.id===obj.id);
+      if(i>=0)STORE.salesdeals[i]=obj; else STORE.salesdeals.push(obj);
+      recomputeSalesFromDeals(); await persist('sales');   // 各事業・全体の売上に直結
+      closeModal(); render();
+    });
+  dealGpPreview();
+}
+function dealGpPreview(){ const el=document.getElementById('d_gp'); if(!el)return; el.value=dealGpLabel({revenue:fnum('d_rev'),cost:fnum('d_cost')}); }
+async function delDeal(id){
+  if(!confirm('この案件を削除しますか?')) return;
+  try{ const r=await api('DELETE','/api/store/salesdeals/item/'+id); REV=r.rev;
+    STORE.salesdeals=(STORE.salesdeals||[]).filter(z=>z.id!==id);
+    recomputeSalesFromDeals(); await persist('sales'); render();
+  }catch(e){ alert(e.message); }
+}
+
+// ---- 人材提案・案件管理（BPO等） ----
+let plBizFilter='';
+function plGp(p){ return (Number(p.revenue)||0)-(Number(p.cost)||0); }
+function plGpr(p){ const r=Number(p.revenue)||0; return r?plGp(p)/r*100:0; }
+function plLead(p){ if(!p.proposeDate) return null; const end=p.closeDate?new Date(p.closeDate):new Date(); const d=Math.round((end-new Date(p.proposeDate))/86400000); return d>=0?d:null; }
+function plLeadLabel(p){ const d=plLead(p); if(d==null) return '—'; return d+'日'+(p.closeDate?'':'（進行中）'); }
+const PL_STATUS=['提案中','面談','成約','稼働中','完了','保留','見送り'];
+const PL_PROPOSAL=['未提案','提案済','書類選考','一次面談','二次面談','内定','見送り'];
+function plStatusCls(s){ return s==='稼働中'||s==='成約'?'ok':s==='完了'?'info':(s==='見送り'?'bad':'muted'); }
+function renderPlacements(c,p){
+  const ed=canEdit('placements');
+  const bizNames=(STORE.businesses||[]).map(z=>z.name);
+  setHeader(p.title,p.sub, ed?`<button class="btn" onclick="editPlacement()">＋ 人材を追加</button>`:roBadge());
+  let list=(STORE.placements||[]).slice();
+  if(plBizFilter) list=list.filter(x=>x.biz===plBizFilter);
+  list.sort((a,b)=>PL_STATUS.indexOf(a.status)-PL_STATUS.indexOf(b.status)||(b.proposeDate||'').localeCompare(a.proposeDate||''));
+  const active=list.filter(x=>['提案中','面談','成約','稼働中'].includes(x.status));
+  const tRev=sum(list,plGpVal=>Number(plGpVal.revenue)||0), tCost=sum(list,x=>Number(x.cost)||0), tGp=tRev-tCost;
+  const leadArr=list.map(plLead).filter(v=>v!=null); const avgLead=leadArr.length?Math.round(leadArr.reduce((a,b2)=>a+b2,0)/leadArr.length):0;
+  c.innerHTML=`
+    <div class="toolbar">
+      <select onchange="plBizFilter=this.value;render()">
+        <option value="">全事業</option>${bizNames.map(o=>`<option${o===plBizFilter?' selected':''}>${o}</option>`).join('')}</select>
+    </div>
+    <div class="grid kpis">
+      ${kpi('案件数','🤝',list.length,`<span class="muted">稼働中 ${list.filter(x=>x.status==='稼働中').length}</span>`)}
+      ${kpi('売上合計','💹',yen(tRev),`<span class="muted">選考中含む</span>`)}
+      ${kpi('粗利合計','💰',yen(tGp),`<span class="${tGp>=0?'up':'down'}">粗利率 ${tRev?(tGp/tRev*100).toFixed(1):0}%</span>`)}
+      ${kpi('平均リードタイム','⏱️',avgLead+'日',`<span class="muted">提案→成約</span>`)}
+    </div><div style="height:16px"></div>
+    <div class="card"><div style="overflow-x:auto"><table>
+    <thead><tr><th>候補者</th><th>事業</th><th>クライアント</th><th>ステータス</th><th>提案状況</th><th>リードタイム</th><th class="num">売上</th><th class="num">報酬</th><th class="num">粗利</th><th class="num">粗利率</th>${ed?'<th></th>':''}</tr></thead>
+    <tbody>${list.map(x=>`<tr>
+      <td><b>${escapeHtml(x.name||'')}</b>${x.note?`<div class="muted" style="font-size:11px">${escapeHtml(x.note)}</div>`:''}</td>
+      <td><span class="muted">${escapeHtml(x.biz||'')}</span></td><td>${escapeHtml(x.client||'')}</td>
+      <td><span class="pill ${plStatusCls(x.status)}">${x.status||''}</span></td>
+      <td><span class="muted">${escapeHtml(x.proposal||'')}</span></td>
+      <td>${plLeadLabel(x)}</td>
+      <td class="num">${yen(x.revenue)}</td><td class="num">${yen(x.cost)}</td>
+      <td class="num ${plGp(x)>=0?'up':'down'}"><b>${yen(plGp(x))}</b></td><td class="num">${(Number(x.revenue)?plGpr(x):0).toFixed(1)}%</td>
+      ${ed?`<td class="row-actions"><button class="icon-btn" onclick="editPlacement('${x.id}')">✏️</button><button class="icon-btn" onclick="del('placements','${x.id}')">🗑</button></td>`:''}
+    </tr>`).join('')||`<tr><td colspan="${ed?11:10}"><div class="empty">データがありません。「＋ 人材を追加」から登録してください。</div></td></tr>`}
+    ${list.length?`<tr style="border-top:2px solid var(--line)"><td colspan="6"><b>合計</b></td><td class="num"><b>${yen(tRev)}</b></td><td class="num"><b>${yen(tCost)}</b></td><td class="num ${tGp>=0?'up':'down'}"><b>${yen(tGp)}</b></td><td class="num"><b>${tRev?(tGp/tRev*100).toFixed(1):0}%</b></td>${ed?'<td></td>':''}</tr>`:''}
+    </tbody></table></div></div>`;
+}
+function editPlacement(id){
+  const bizNames=(STORE.businesses||[]).map(z=>z.name); const bizOpts=bizNames.length?bizNames:['—'];
+  const x=(STORE.placements||[]).find(z=>z.id===id)||{biz:(plBizFilter||bizNames[0]||'BPO事業'),name:'',client:'',status:'提案中',proposal:'提案済',proposeDate:todayISO(),closeDate:'',revenue:0,cost:0,note:''};
+  openModal(id?'人材を編集':'人材を追加',`
+    <div class="field two"><label>候補者 / 事業</label>
+      <input id="p_name" value="${escapeHtml(x.name||'')}" placeholder="氏名 / 人材名"><select id="p_biz">${bizOpts.map(o=>`<option${o===x.biz?' selected':''}>${o}</option>`).join('')}</select></div>
+    ${field('クライアント','p_client',escapeHtml(x.client||''))}
+    <div class="field two"><label>ステータス / 提案状況</label>
+      <select id="p_status">${PL_STATUS.map(o=>`<option${o===x.status?' selected':''}>${o}</option>`).join('')}</select>
+      <select id="p_prop">${PL_PROPOSAL.map(o=>`<option${o===x.proposal?' selected':''}>${o}</option>`).join('')}</select></div>
+    <div class="field two"><label>提案日 / 成約日（リードタイム自動計算）</label>
+      <input id="p_pd" type="date" value="${x.proposeDate||''}" oninput="plLeadPreview()"><input id="p_cd" type="date" value="${x.closeDate||''}" oninput="plLeadPreview()"></div>
+    <div class="field"><label>リードタイム（自動）</label><input id="p_lead" value="${plLeadLabel(x)}" disabled style="opacity:.75"></div>
+    <div class="field two"><label>売上(円) / 報酬(円)</label>
+      <input id="p_rev" type="number" value="${x.revenue||0}" oninput="plGpPreview()"><input id="p_cost" type="number" value="${x.cost||0}" oninput="plGpPreview()"></div>
+    <div class="field"><label>粗利 / 粗利率（自動）</label><input id="p_gp" value="${yen(plGp(x))}（${x.revenue?plGpr(x).toFixed(1):0}%）" disabled style="opacity:.75"></div>
+    ${field('メモ','p_note',escapeHtml(x.note||''))}`,
+    ()=>{ if(!fv('p_name').trim()) throw new Error('候補者名を入力してください');
+      return upsert('placements',{id:id||b(),biz:fv('p_biz'),name:fv('p_name').trim(),client:fv('p_client').trim(),
+        status:fv('p_status'),proposal:fv('p_prop'),proposeDate:fv('p_pd'),closeDate:fv('p_cd'),
+        revenue:Math.abs(fnum('p_rev')),cost:Math.abs(fnum('p_cost')),note:fv('p_note')},id); });
+}
+function plLeadPreview(){ const el=document.getElementById('p_lead'); if(el) el.value=plLeadLabel({proposeDate:fv('p_pd'),closeDate:fv('p_cd')}); }
+function plGpPreview(){ const el=document.getElementById('p_gp'); if(!el)return; const d={revenue:fnum('p_rev'),cost:fnum('p_cost')}; el.value=`${yen(plGp(d))}（${d.revenue?plGpr(d).toFixed(1):0}%）`; }
 function salesBars(s,cols){
   const rt=x=>cols.reduce((a,c)=>a+(x[c.key]||0),0);
   const max=Math.max(...s.map(rt),1);
@@ -618,6 +772,8 @@ function cfDefaultRange(){
 }
 function jpMonth(m){ const [y,mo]=m.split('-'); return `${y}年${parseInt(mo)}月`; }
 function escapeHtml(s){ return String(s).replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch])); }
+// HTML属性内のインラインJS文字列に安全に埋め込む（'"\ と改行をエスケープ）
+function escapeAttr(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/\\/g,'\\\\').replace(/'/g,'\\u0027').replace(/[\r\n]+/g,' '); }
 function cfReload(){ const f=document.getElementById('cf-from'),t=document.getElementById('cf-to'); if(f)cfFrom=f.value; if(t)cfTo=t.value; render(); }
 async function cfEditOpening(){
   const cur=(STORE.cashflow&&STORE.cashflow.opening_balance)||3000000;
@@ -721,6 +877,21 @@ const CF_CATS={
 };
 function cfBankName(id){ const b=(STORE.banks||[]).find(x=>x.id===id); return b?b.name:'—'; }
 function cfCatLabel(k){ return (CF_CATS[k]||{}).label||'自動分類'; }
+// CSVの「分類」列テキスト → カテゴリキー（キー直・正式ラベル・よくある別名に対応。不明は''＝サーバー自動分類）
+function cfCatFromLabel(s){
+  const t=String(s||'').trim(); if(!t) return '';
+  if(CF_CATS[t]) return t;                                   // sales / purchase … キー直指定
+  for(const k in CF_CATS){ if(CF_CATS[k].label===t) return k; } // 正式ラベル一致
+  const alias={ '売上':'sales','売上入金':'sales','入金':'sales',
+    'その他収入':'other_in','その他営業収入':'other_in','雑収入':'other_in',
+    '仕入':'purchase','外注':'purchase','仕入・外注':'purchase','買掛':'purchase','買掛金':'purchase','業務委託':'purchase',
+    '人件費':'payroll','給与':'payroll','賃金':'payroll','給料':'payroll',
+    '税':'tax','税金':'tax','社会保険':'tax','社保':'tax','税金・社会保険':'tax','保険料':'tax',
+    '経費':'expense','経費・その他':'expense','その他経費':'expense','支払利息':'expense',
+    '借入':'finance_in','財務収入':'finance_in','財務収入（借入）':'finance_in','調達':'finance_in',
+    '返済':'finance_out','財務支出':'finance_out','財務支出（返済）':'finance_out' };
+  return alias[t]||'';
+}
 // 入出金明細カード
 function cfTxnListCard(ed){
   const list=(STORE.cftxns||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
@@ -842,6 +1013,8 @@ async function cfCsvFile(file){
       <div class="field two"><label>入金列 / 出金列</label>
         <select id="m_in" onchange="cfCsvPreview()">${opts(find('お預入れ','預入','入金'))}</select>
         <select id="m_out" onchange="cfCsvPreview()">${opts(find('お引出し','引出','出金','支払'))}</select></div>
+      <div class="field"><label>分類列（任意・指定すると自動分類より優先）</label>
+        <select id="m_cat" onchange="cfCsvPreview()">${opts(find('分類','科目','カテゴリ','category'))}</select></div>
       <div class="field two"><label>取込先の口座 / 日付を一括指定（任意・CSVに日付が無い場合）</label>
         <select id="imp_bank">${['（未指定）',...banks.map(b=>b.name)].map(o=>`<option>${o}</option>`).join('')}</select>
         <input id="imp_fixdate" type="date" onchange="cfCsvPreview()"></div>`;
@@ -852,7 +1025,7 @@ function cfCsvPreview(){
   const rows=window._cfRows||[]; const pv=document.getElementById('imp_prev'); if(!rows.length||!pv) return;
   const head=rows[0].map(h=>String(h).trim());
   const ix=id=>{ const v=fv(id); return v==='（なし）'?-1:head.indexOf(v); };
-  const di=ix('m_date'), ri=ix('m_rem'), ii=ix('m_in'), oi=ix('m_out');
+  const di=ix('m_date'), ri=ix('m_rem'), ii=ix('m_in'), oi=ix('m_out'), ci=ix('m_cat');
   const fixed=fv('imp_fixdate');
   const out=[];
   for(let r=1;r<rows.length;r++){
@@ -861,7 +1034,8 @@ function cfCsvPreview(){
     if(!inAmt && !outAmt) continue;
     const date=fixed||(di>=0?cfNormDate(row[di]):'');
     out.push({date, remarks:(ri>=0?String(row[ri]||'').trim():''),
-      direction:inAmt?'in':'out', amount:inAmt||outAmt});
+      direction:inAmt?'in':'out', amount:inAmt||outAmt,
+      category:(ci>=0?cfCatFromLabel(row[ci]):'')});
   }
   window._cfPreview=out;
   const noDate=out.filter(o=>!o.date).length;
@@ -871,8 +1045,9 @@ function cfCsvPreview(){
       ${noDate?`<br>⚠ ${noDate}件で日付が読み取れません。「日付を一括指定」で日付を入れるか、取込後に各明細を編集してください。`:''}
     </div>
     ${out.length?`<div style="max-height:180px;overflow:auto;border:1px solid var(--line);border-radius:8px">
-      <table><thead><tr><th>入出金日</th><th>摘要</th><th class="num">金額</th></tr></thead><tbody>
+      <table><thead><tr><th>入出金日</th><th>摘要</th><th>分類</th><th class="num">金額</th></tr></thead><tbody>
       ${out.slice(0,30).map(o=>`<tr><td class="${o.date?'':'down'}">${o.date||'未設定'}</td><td>${escapeHtml(o.remarks)}</td>
+        <td><span class="pill muted">${o.category?cfCatLabel(o.category):'自動'}</span></td>
         <td class="num ${o.direction==='in'?'up':'down'}">${o.direction==='in'?'＋':'−'}${yen(o.amount)}</td></tr>`).join('')}
       </tbody></table>${out.length>30?`<div class="muted" style="padding:6px;font-size:12px">…ほか${out.length-30}件</div>`:''}</div>`:''}`;
 }
@@ -882,7 +1057,7 @@ async function cfDoImport(){
   const bank=((STORE.banks||[]).find(b2=>b2.name===fv('imp_bank'))||{}).id||'';
   await loadStore();  // 最新を取得してから追記（他の人の入力を消さない）
   const add=list.map(o=>({id:b(),date:o.date,direction:o.direction,amount:o.amount,
-    category:'',bank,remarks:o.remarks,source:'csv'}));
+    category:o.category||'',bank,remarks:o.remarks,source:'csv'}));
   STORE.cftxns=[...(STORE.cftxns||[]),...add];
   await persist('cftxns');
   window._cfRows=null; window._cfPreview=null;
@@ -1650,6 +1825,434 @@ function editMemo(id){
         content:fv('mm_content'),nextAction:fv('mm_next'),minutesUrl:fv('mm_url').trim()},id); });
 }
 
+//==================================================================
+// クライアント・ワークスペース（Notion風・議事録＋タスクを進捗共有）
+//==================================================================
+let wsClient=null;      // 選択中クライアント名
+let wsTab='tasks';      // 'tasks' | 'notes'
+let wsAssignee='all';   // 担当者フィルタ
+const WS_STATUS=[
+  {k:'未着手', cls:'ws-todo',  dot:'#94a3b8'},
+  {k:'進行中', cls:'ws-doing', dot:'#3b82f6'},
+  {k:'レビュー',cls:'ws-review',dot:'#f59e0b'},
+  {k:'完了',   cls:'ws-done',  dot:'#10b981'},
+];
+const WS_PRIO={'高':'#ef4444','中':'#f59e0b','低':'#94a3b8'};
+function wsClientsAll(){ return (STORE.wsclients||[]).filter(c=>!c.archived); }
+function wsMembers(){
+  const set=new Set(['高嶋','早田']);
+  (STORE.wsclients||[]).forEach(c=>{ if(c.owner) set.add(c.owner); });
+  (STORE.wstasks||[]).forEach(t=>{ if(t.assignee) set.add(t.assignee); });
+  return [...set];
+}
+function wsTasksOf(client){ return (STORE.wstasks||[]).filter(t=>t.client===client); }
+function wsProgress(client){
+  const ts=wsTasksOf(client); const done=ts.filter(t=>t.status==='完了').length;
+  return {total:ts.length, done, pct:ts.length?Math.round(done/ts.length*100):0};
+}
+function wsMemberChip(name){
+  if(!name) return '<span class="muted" style="font-size:11px">未割当</span>';
+  const col=name==='高嶋'?'#6366f1':name==='早田'?'#10b981':'#64748b';
+  return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:${col}">
+    <span style="width:16px;height:16px;border-radius:50%;background:${col};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:9px">${escapeHtml(name.slice(0,1))}</span>${escapeHtml(name)}</span>`;
+}
+function renderWorkspace(c,p){
+  const ed=canEdit('workspace');
+  const clients=wsClientsAll();
+  if(clients.length && (!wsClient || !clients.find(x=>x.name===wsClient))) wsClient=clients[0].name;
+  setHeader(p.title,p.sub, ed?`<button class="btn ghost" onclick="editWsNote()">＋ 議事録</button><button class="btn" onclick="editWsTask()">＋ タスク</button>`:roBadge());
+  if(!clients.length){
+    c.innerHTML=`<div class="card"><div class="empty">クライアントがまだありません。<br>${ed?'右下の「＋ クライアント」から追加してください。':'管理者がクライアントを追加すると表示されます。'}</div>
+      ${ed?`<div style="margin-top:14px;text-align:center"><button class="btn" onclick="editWsClient()">＋ クライアントを追加</button></div>`:''}</div>`;
+    return;
+  }
+  // 左：クライアント一覧（進捗つき）
+  const clientList=clients.map(cl=>{
+    const pr=wsProgress(cl.name); const active=cl.name===wsClient;
+    const notes=(STORE.wsnotes||[]).filter(n=>n.client===cl.name).length;
+    return `<div onclick="wsClient='${escapeAttr(cl.name)}';render()" style="cursor:pointer;padding:11px 12px;border-radius:10px;margin-bottom:6px;border:1px solid ${active?'var(--accent)':'var(--line)'};background:${active?'color-mix(in srgb,var(--accent) 12%,transparent)':'var(--panel)'}">
+      <div style="display:flex;align-items:center;gap:8px;justify-content:space-between">
+        <span style="display:flex;align-items:center;gap:8px;min-width:0">
+          <span style="width:10px;height:10px;border-radius:3px;background:${cl.color||'#6366f1'};flex:none"></span>
+          <b style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(cl.name)}</b>
+        </span>
+        <span class="muted" style="font-size:11px;flex:none">${pr.done}/${pr.total}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:7px">
+        <div style="flex:1;height:5px;border-radius:3px;background:var(--line);overflow:hidden"><div style="height:100%;width:${pr.pct}%;background:${pr.pct===100?'#10b981':'var(--accent)'}"></div></div>
+        <span class="muted" style="font-size:10px">${pr.pct}%</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">${wsMemberChip(cl.owner)}<span class="muted" style="font-size:10px">📋 議事録 ${notes}</span></div>
+    </div>`;
+  }).join('');
+  c.innerHTML=`
+    <div class="ws-grid">
+      <div class="ws-side">
+        <div class="card" style="padding:12px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+            <h3 style="margin:0;font-size:13px">クライアント <span class="pill muted">${clients.length}</span></h3>
+            ${ed?`<button class="btn ghost sm" onclick="editWsClient()">＋</button>`:''}
+          </div>
+          ${clientList}
+        </div>
+      </div>
+      <div class="ws-main"><div id="ws-detail"></div></div>
+    </div>
+    <style>
+      .ws-grid{display:grid;grid-template-columns:260px 1fr;gap:16px;align-items:start}
+      @media(max-width:820px){.ws-grid{grid-template-columns:1fr}}
+      .ws-cols{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+      @media(max-width:1100px){.ws-cols{grid-template-columns:repeat(2,minmax(0,1fr))}}
+      @media(max-width:560px){.ws-cols{grid-template-columns:1fr}}
+      .ws-card{background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px;margin-bottom:8px}
+      .ws-tab{padding:7px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;border:1px solid var(--line);background:var(--panel);color:var(--muted)}
+      .ws-tab.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+    </style>`;
+  wsRenderDetail();
+}
+function wsRenderDetail(){
+  const el=document.getElementById('ws-detail'); if(!el) return;
+  const ed=canEdit('workspace');
+  const cl=wsClientsAll().find(x=>x.name===wsClient); if(!cl){ el.innerHTML=''; return; }
+  const pr=wsProgress(cl.name);
+  const counts={}; WS_STATUS.forEach(s=>counts[s.k]=0);
+  wsTasksOf(cl.name).forEach(t=>{ if(counts[t.status]!==undefined) counts[t.status]++; });
+  const overdue=wsTasksOf(cl.name).filter(t=>t.status!=='完了'&&t.due&&t.due<todayISO()).length;
+  const stat=(label,val,col)=>`<div style="flex:1;min-width:80px;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 12px">
+    <div class="muted" style="font-size:11px">${label}</div><div style="font-size:20px;font-weight:700;color:${col||'var(--txt)'}">${val}</div></div>`;
+  const members=wsMembers();
+  const asgFilter=`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+    <span class="muted" style="font-size:11px">担当:</span>
+    <button class="btn ghost sm${wsAssignee==='all'?' on':''}" style="${wsAssignee==='all'?'background:var(--accent);color:#fff':''}" onclick="wsAssignee='all';wsRenderDetail()">全員</button>
+    ${members.map(m=>`<button class="btn ghost sm" style="${wsAssignee===m?'background:var(--accent);color:#fff':''}" onclick="wsAssignee='${escapeAttr(m)}';wsRenderDetail()">${escapeHtml(m)}</button>`).join('')}</div>`;
+  el.innerHTML=`
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <h3 style="margin:0;display:flex;align-items:center;gap:9px"><span style="width:12px;height:12px;border-radius:4px;background:${cl.color||'#6366f1'}"></span>${escapeHtml(cl.name)}
+          <span class="muted" style="font-size:12px;font-weight:400">担当 ${escapeHtml(cl.owner||'—')}</span></h3>
+        ${ed?`<span><button class="btn ghost sm" onclick="editWsClient('${cl.id}')">✏️ 編集</button></span>`:''}
+      </div>
+      ${cl.note?`<p class="muted" style="font-size:12px;margin:8px 0 0">${escapeHtml(cl.note)}</p>`:''}
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
+        ${stat('進捗', pr.pct+'%', pr.pct===100?'#10b981':'var(--accent)')}
+        ${stat('未着手', counts['未着手'])}
+        ${stat('進行中', counts['進行中'],'#3b82f6')}
+        ${stat('レビュー', counts['レビュー'],'#f59e0b')}
+        ${stat('完了', counts['完了'],'#10b981')}
+        ${stat('期限超過', overdue, overdue?'#ef4444':'var(--muted)')}
+      </div>
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+        <div style="display:flex;gap:8px">
+          <div class="ws-tab ${wsTab==='tasks'?'on':''}" onclick="wsTab='tasks';wsRenderDetail()">✅ タスク</div>
+          <div class="ws-tab ${wsTab==='notes'?'on':''}" onclick="wsTab='notes';wsRenderDetail()">📋 議事録</div>
+        </div>
+        ${wsTab==='tasks'?asgFilter:(ed?`<button class="btn sm" onclick="editWsNote(null,'${escapeAttr(cl.name)}')">＋ 議事録を追加</button>`:'')}
+      </div>
+      <div id="ws-tabbody"></div>
+    </div>`;
+  if(wsTab==='tasks') wsRenderTasks(cl.name); else wsRenderNotes(cl.name);
+}
+function wsRenderTasks(client){
+  const el=document.getElementById('ws-tabbody'); if(!el) return;
+  const ed=canEdit('workspace');
+  let ts=wsTasksOf(client);
+  if(wsAssignee!=='all') ts=ts.filter(t=>t.assignee===wsAssignee);
+  const cols=WS_STATUS.map(s=>{
+    const items=ts.filter(t=>t.status===s.k).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
+    const cards=items.map(t=>{
+      const od=t.status!=='完了'&&t.due&&t.due<todayISO();
+      return `<div class="ws-card">
+        <div style="font-size:13px;font-weight:600;line-height:1.4">${escapeHtml(t.title||'（無題）')}</div>
+        ${t.note?`<div class="muted" style="font-size:11px;margin-top:4px;white-space:pre-wrap">${escapeHtml(t.note)}</div>`:''}
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            ${wsMemberChip(t.assignee)}
+            ${t.priority?`<span style="font-size:10px;font-weight:700;color:${WS_PRIO[t.priority]||'#64748b'}">●${escapeHtml(t.priority)}</span>`:''}
+            ${t.due?`<span class="muted" style="font-size:10px;${od?'color:#ef4444;font-weight:700':''}">📅 ${fmtDate(t.due)}${od?' 超過':''}</span>`:''}
+          </div>
+          ${ed?`<span class="row-actions" style="flex:none"><button class="icon-btn" onclick="editWsTask('${t.id}')">✏️</button><button class="icon-btn" onclick="del('wstasks','${t.id}').then(wsRenderDetail)">🗑</button></span>`:''}
+        </div>
+      </div>`;
+    }).join('')||`<div class="empty" style="padding:14px;font-size:12px">なし</div>`;
+    return `<div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <b style="font-size:12px;display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:${s.dot}"></span>${s.k} <span class="muted" style="font-weight:400">${items.length}</span></b>
+        ${ed?`<button class="icon-btn" title="このステータスで追加" onclick="editWsTask(null,'${escapeAttr(client)}','${s.k}')">＋</button>`:''}
+      </div>
+      ${cards}
+    </div>`;
+  }).join('');
+  el.innerHTML=`<div class="ws-cols">${cols}</div>`;
+}
+function wsRenderNotes(client){
+  const el=document.getElementById('ws-tabbody'); if(!el) return;
+  const ed=canEdit('workspace');
+  const notes=(STORE.wsnotes||[]).filter(n=>n.client===client).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  el.innerHTML=notes.map(n=>`<div class="ws-card" style="cursor:pointer" onclick="showWsNote('${n.id}')">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+      <b style="font-size:13px">${escapeHtml(n.title||'議事録')}</b>
+      <span class="muted" style="font-size:11px;flex:none">${n.date||''}</span>
+    </div>
+    ${n.attendees?`<div class="muted" style="font-size:11px;margin-top:3px">👥 ${escapeHtml(n.attendees)}</div>`:''}
+    ${n.body?`<div class="muted" style="font-size:12px;margin-top:6px;white-space:pre-wrap;max-height:52px;overflow:hidden">${escapeHtml(n.body)}</div>`:''}
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+      ${n.url?`<a href="${escapeHtml(n.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--accent);font-size:11px;text-decoration:none">🔗 議事録ツールを開く</a>`:'<span></span>'}
+      ${ed?`<span class="row-actions" onclick="event.stopPropagation()"><button class="icon-btn" onclick="editWsNote('${n.id}')">✏️</button><button class="icon-btn" onclick="del('wsnotes','${n.id}').then(wsRenderDetail)">🗑</button></span>`:''}
+    </div>
+  </div>`).join('')||`<div class="empty">議事録がまだありません。${ed?'「＋ 議事録を追加」から記録してください。':''}</div>`;
+}
+function showWsNote(id){
+  const n=(STORE.wsnotes||[]).find(z=>z.id===id); if(!n) return;
+  const ed=canEdit('workspace');
+  const kv=(k,v)=>`<div class="stat-line"><span class="muted">${k}</span><b>${v}</b></div>`;
+  openModal(escapeHtml(n.title||'議事録'),`
+    ${kv('クライアント', escapeHtml(n.client||'—'))}
+    ${kv('日付', n.date||'—')}
+    ${kv('参加者', escapeHtml(n.attendees||'—'))}
+    ${n.url?kv('議事録', `<a href="${escapeHtml(n.url)}" target="_blank" rel="noopener" style="color:var(--accent)">🔗 開く ↗</a>`):''}
+    <div style="margin-top:12px"><div class="muted" style="font-size:12px;margin-bottom:4px">内容</div>
+      <div style="font-size:13px;line-height:1.8;white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px">${escapeHtml(n.body||'')}</div></div>`,
+    ed?()=>{ closeModal(); editWsNote(id); }:null);
+  const sv=document.getElementById('modal-save');
+  if(ed){ sv.textContent='✏️ 編集する'; sv.style.display=''; } else sv.style.display='none';
+}
+function editWsClient(id){
+  const x=(STORE.wsclients||[]).find(z=>z.id===id)||{name:'',owner:'高嶋',color:'#6366f1',note:'',archived:false};
+  const members=wsMembers();
+  const colors=['#6366f1','#10b981','#f59e0b','#ef4444','#0ea5e9','#8b5cf6','#ec4899','#64748b'];
+  openModal(id?'クライアントを編集':'クライアントを追加',`
+    ${field('クライアント名','wc_name',escapeHtml(x.name||''),'text')}
+    <div class="field"><label>担当（オーナー）</label>
+      <input id="wc_owner" list="wc-mem" value="${escapeHtml(x.owner||'')}" placeholder="高嶋 / 早田">
+      <datalist id="wc-mem">${members.map(m=>`<option value="${escapeHtml(m)}">`).join('')}</datalist></div>
+    <div class="field"><label>カラー</label>
+      <select id="wc_color">${colors.map(cc=>`<option value="${cc}"${cc===x.color?' selected':''}>${cc}</option>`).join('')}</select></div>
+    <div class="field"><label>メモ</label><textarea id="wc_note" rows="2" placeholder="案件概要・注意点など">${escapeHtml(x.note||'')}</textarea></div>
+    ${id?`<label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-top:4px"><input type="checkbox" id="wc_arch"${x.archived?' checked':''}> アーカイブする（一覧から隠す）</label>`:''}`,
+    ()=>{ const nm=fv('wc_name').trim(); if(!nm) throw new Error('クライアント名を入力してください');
+      const oldName=x.name;
+      const arch=document.getElementById('wc_arch')?document.getElementById('wc_arch').checked:false;
+      const r=upsert('wsclients',{id:id||b(),name:nm,owner:fv('wc_owner').trim(),color:fv('wc_color'),note:fv('wc_note'),archived:arch},id);
+      // クライアント名を変更したら、紐づくタスク・議事録の client も追従
+      if(id && oldName && oldName!==nm){
+        (STORE.wstasks||[]).forEach(t=>{ if(t.client===oldName){ t.client=nm; upsert('wstasks',t,t.id); }});
+        (STORE.wsnotes||[]).forEach(t=>{ if(t.client===oldName){ t.client=nm; upsert('wsnotes',t,t.id); }});
+        if(wsClient===oldName) wsClient=nm;
+      } else { wsClient=nm; }
+      return r; });
+}
+function editWsTask(id, presetClient, presetStatus){
+  const x=(STORE.wstasks||[]).find(z=>z.id===id)||{client:presetClient||wsClient||'',title:'',assignee:'高嶋',status:presetStatus||'未着手',due:'',priority:'中',note:''};
+  const clients=wsClientsAll().map(c=>c.name); if(x.client&&!clients.includes(x.client)) clients.unshift(x.client);
+  const members=wsMembers();
+  openModal(id?'タスクを編集':'タスクを追加',`
+    <div class="field two"><label>クライアント / 担当</label>
+      <select id="wt_client">${clients.map(o=>`<option${o===x.client?' selected':''}>${escapeHtml(o)}</option>`).join('')}</select>
+      <select id="wt_asg">${members.map(o=>`<option${o===x.assignee?' selected':''}>${escapeHtml(o)}</option>`).join('')}</select></div>
+    ${field('タスク名','wt_title',escapeHtml(x.title||''),'text')}
+    <div class="field two"><label>ステータス / 優先度</label>
+      <select id="wt_status">${WS_STATUS.map(s=>`<option${s.k===x.status?' selected':''}>${s.k}</option>`).join('')}</select>
+      <select id="wt_prio">${['高','中','低'].map(o=>`<option${o===x.priority?' selected':''}>${o}</option>`).join('')}</select></div>
+    <div class="field"><label>期限</label><input id="wt_due" type="date" value="${x.due||''}"></div>
+    <div class="field"><label>メモ</label><textarea id="wt_note" rows="3" placeholder="補足・チェックリストなど">${escapeHtml(x.note||'')}</textarea></div>`,
+    ()=>{ const t=fv('wt_title').trim(); if(!t) throw new Error('タスク名を入力してください');
+      wsClient=fv('wt_client');
+      return upsert('wstasks',{id:id||b(),client:fv('wt_client'),title:t,assignee:fv('wt_asg'),
+        status:fv('wt_status'),due:fv('wt_due'),priority:fv('wt_prio'),note:fv('wt_note'),updated:Date.now()},id); });
+}
+function editWsNote(id, presetClient){
+  const x=(STORE.wsnotes||[]).find(z=>z.id===id)||{client:presetClient||wsClient||'',date:todayISO(),title:'',attendees:'',body:'',url:''};
+  const clients=wsClientsAll().map(c=>c.name); if(x.client&&!clients.includes(x.client)) clients.unshift(x.client);
+  openModal(id?'議事録を編集':'議事録を追加',`
+    <div class="field two"><label>クライアント / 日付</label>
+      <select id="wn_client">${clients.map(o=>`<option${o===x.client?' selected':''}>${escapeHtml(o)}</option>`).join('')}</select>
+      <input id="wn_date" type="date" value="${x.date||todayISO()}"></div>
+    ${field('タイトル','wn_title',escapeHtml(x.title||''),'text')}
+    ${field('参加者','wn_att',escapeHtml(x.attendees||''),'text')}
+    <div class="field"><label>内容（議事メモ）</label><textarea id="wn_body" rows="6" placeholder="・決定事項\n・共有事項\n・ネクストアクション">${escapeHtml(x.body||'')}</textarea></div>
+    <div class="field"><label>議事録ツールURL（Frictio等）</label><input id="wn_url" type="url" value="${escapeHtml(x.url||'')}" placeholder="https://app.frictio.ai/ws/..."></div>`,
+    ()=>{ if(!fv('wn_title').trim()&&!fv('wn_body').trim()) throw new Error('タイトルか内容を入力してください');
+      wsClient=fv('wn_client');
+      return upsert('wsnotes',{id:id||b(),client:fv('wn_client'),date:fv('wn_date'),title:fv('wn_title').trim(),
+        attendees:fv('wn_att').trim(),body:fv('wn_body'),url:fv('wn_url').trim(),updated:Date.now()},id); });
+}
+
+//==================================================================
+// クライアント管理（CRM・会社マスタ／360°ビュー）
+//==================================================================
+let clientQ='';          // 検索
+let clientStatus='all';  // ステータス絞り込み
+const CL_STATUS=[
+  {k:'見込み',   c:'#94a3b8'},
+  {k:'商談中',   c:'#3b82f6'},
+  {k:'既存',     c:'#10b981'},
+  {k:'休眠',     c:'#f59e0b'},
+  {k:'取引終了', c:'#ef4444'},
+];
+function clStatusColor(s){ const o=CL_STATUS.find(x=>x.k===s); return o?o.c:'#64748b'; }
+function clStatusPill(s){ return `<span class="pill" style="background:color-mix(in srgb,${clStatusColor(s)} 20%,transparent);color:${clStatusColor(s)};border:1px solid ${clStatusColor(s)}">${escapeHtml(s||'—')}</span>`; }
+function clOwnerChip(name){ return wsMemberChip(name); }
+// あるクライアント名に紐づく関連データを横断収集
+function clRelated(name){
+  const eq=(v)=>v===name;
+  return {
+    contracts:(STORE.contracts||[]).filter(c=>eq(c.client)),
+    memos:(STORE.memos||[]).filter(m=>eq(m.client)),
+    wsnotes:(STORE.wsnotes||[]).filter(n=>eq(n.client)),
+    wstasks:(STORE.wstasks||[]).filter(t=>eq(t.client)),
+    deals:(STORE.deals||[]).filter(d=>eq(d.customer)),
+    placements:(STORE.placements||[]).filter(p=>eq(p.client)),
+    docs:(STORE.documents||[]).filter(d=>eq(d.client)),
+  };
+}
+function renderClients(c,p){
+  const ed=canEdit('clients');
+  setHeader(p.title,p.sub, ed?`<button class="btn" onclick="editClient()">＋ クライアントを追加</button>`:roBadge());
+  const chips=['all',...CL_STATUS.map(s=>s.k)].map(k=>{
+    const on=clientStatus===k;
+    const lbl=k==='all'?'すべて':k;
+    return `<button class="btn ghost sm" style="${on?'background:var(--accent);color:#fff;border-color:var(--accent)':''}" onclick="clientStatus='${k}';clRenderBody()">${lbl}</button>`;
+  }).join('');
+  c.innerHTML=`
+    <div class="toolbar" style="gap:10px;flex-wrap:wrap">
+      <input id="cl-q" placeholder="🔎 会社名・担当者・メモ・タグで検索…" value="${escapeHtml(clientQ)}"
+        oninput="clientQ=this.value;clRenderBody()"
+        style="flex:1;min-width:220px;max-width:420px;background:var(--panel);border:1px solid var(--line);color:var(--txt);padding:9px 12px;border-radius:9px;font-size:13px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${chips}</div>
+    </div>
+    <div id="cl-kpi"></div>
+    <div id="cl-body"></div>`;
+  clRenderBody();
+}
+function clRenderBody(){
+  const body=document.getElementById('cl-body'); if(!body) return;
+  const ed=canEdit('clients');
+  const all=(STORE.clients||[]).slice();
+  // KPI
+  const kpiEl=document.getElementById('cl-kpi');
+  if(kpiEl){
+    const cnt=k=>all.filter(x=>x.status===k).length;
+    const soon=all.filter(x=>x.nextDate&&daysTo(x.nextDate)>=0&&daysTo(x.nextDate)<=7).length;
+    const tile=(l,v,col)=>`<div style="flex:1;min-width:96px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 13px">
+      <div class="muted" style="font-size:11px">${l}</div><div style="font-size:21px;font-weight:700;color:${col||'var(--txt)'}">${v}</div></div>`;
+    kpiEl.innerHTML=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin:4px 0 14px">
+      ${tile('総クライアント', all.length)}
+      ${tile('既存', cnt('既存'),'#10b981')}
+      ${tile('商談中', cnt('商談中'),'#3b82f6')}
+      ${tile('見込み', cnt('見込み'))}
+      ${tile('今週フォロー', soon, soon?'#f59e0b':'var(--muted)')}
+    </div>`;
+  }
+  // フィルタ＋検索
+  let list=all;
+  if(clientStatus!=='all') list=list.filter(x=>x.status===clientStatus);
+  const q=clientQ.trim().toLowerCase();
+  if(q) list=list.filter(x=>((x.name||'')+' '+(x.kana||'')+' '+(x.person||'')+' '+(x.note||'')+' '+((x.tags||[]).join(' '))+' '+(x.owner||'')+' '+(x.biz||'')).toLowerCase().includes(q));
+  list.sort((a,b)=>(a.name||'').localeCompare(b.name||'','ja'));
+  body.innerHTML=`<div class="card"><h3>クライアント一覧 <span class="pill muted">${list.length}件</span></h3>
+    <div style="overflow-x:auto"><table>
+      <thead><tr><th>会社名</th><th>先方担当</th><th>ステータス</th><th>事業</th><th>自社担当</th><th>契約</th><th>次回フォロー</th>${ed?'<th></th>':''}</tr></thead>
+      <tbody>${list.map(x=>{
+        const rel=clRelated(x.name);
+        const cAmt=sum(rel.contracts,z=>z.amount||0);
+        const od=x.nextDate&&daysTo(x.nextDate)<0;
+        const soon=x.nextDate&&daysTo(x.nextDate)>=0&&daysTo(x.nextDate)<=7;
+        return `<tr style="cursor:pointer" onclick="showClient('${x.id}')">
+          <td><b>${escapeHtml(x.name||'—')}</b>${(x.tags||[]).length?`<div style="margin-top:3px">${(x.tags||[]).slice(0,3).map(t=>`<span class="pill muted" style="font-size:10px">${escapeHtml(t)}</span>`).join(' ')}</div>`:''}</td>
+          <td>${escapeHtml(x.person||'—')}${x.role?`<div class="muted" style="font-size:11px">${escapeHtml(x.role)}</div>`:''}</td>
+          <td>${clStatusPill(x.status)}</td>
+          <td><span class="muted" style="font-size:12px">${escapeHtml(x.biz||'—')}</span></td>
+          <td>${clOwnerChip(x.owner)}</td>
+          <td>${rel.contracts.length?`<span title="契約 ${rel.contracts.length}件">${rel.contracts.length}件${cAmt?`・${yen(cAmt)}`:''}</span>`:'<span class="muted">—</span>'}</td>
+          <td class="${od?'down':''}" style="${od?'color:#ef4444;font-weight:700':soon?'color:#f59e0b;font-weight:600':''}">${x.nextDate?`${fmtDate(x.nextDate)}${od?' 超過':''}`:'<span class="muted" style="font-weight:400">—</span>'}${x.nextAction?`<div class="muted" style="font-size:11px;font-weight:400;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(x.nextAction)}</div>`:''}</td>
+          ${ed?`<td class="row-actions" onclick="event.stopPropagation()"><button class="icon-btn" onclick="editClient('${x.id}')">✏️</button><button class="icon-btn" onclick="del('clients','${x.id}').then(clRenderBody)">🗑</button></td>`:''}
+        </tr>`;}).join('')||`<tr><td colspan="${ed?8:7}"><div class="empty">${q||clientStatus!=='all'?'条件に一致するクライアントがありません':'クライアントがまだありません。「＋ クライアントを追加」から登録してください。'}</div></td></tr>`}</tbody>
+    </table></div></div>`;
+}
+function showClient(id){
+  const x=(STORE.clients||[]).find(z=>z.id===id); if(!x) return;
+  const ed=canEdit('clients');
+  const rel=clRelated(x.name);
+  const kv=(k,v)=>v?`<div class="stat-line"><span class="muted">${k}</span><b>${v}</b></div>`:'';
+  const cAmt=sum(rel.contracts,z=>z.amount||0);
+  const unpaid=rel.docs.filter(d=>d.type==='請求書'&&d.status!=='入金済み');
+  const done=rel.wstasks.filter(t=>t.status==='完了').length;
+  const sec=(title,inner,count)=>`<div style="margin-top:14px"><div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px">${title}${count!==undefined?` <span class="pill muted">${count}</span>`:''}</div>${inner}</div>`;
+  const line=(html)=>`<div class="ws-card" style="margin-bottom:6px">${html}</div>`;
+  const contractsHtml=rel.contracts.length?rel.contracts.map(c=>line(`<div style="display:flex;justify-content:space-between;gap:8px"><span>📄 ${escapeHtml(c.type||'契約')} <span class="pill ${c.status==='有効'?'ok':'warn'}" style="font-size:10px">${escapeHtml(c.status||'')}</span></span><b>${yen(c.amount||0)}</b></div><div class="muted" style="font-size:11px;margin-top:3px">${fmtDate(c.start)}〜${fmtDate(c.end)}</div>`)).join(''):'<div class="muted" style="font-size:12px">—</div>';
+  const notes=[...rel.memos.map(m=>({t:'memo',id:m.id,date:m.date,title:m.title,extra:m.via})),...rel.wsnotes.map(n=>({t:'ws',id:n.id,date:n.date,title:n.title,extra:n.attendees}))].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const notesHtml=notes.length?notes.map(n=>line(`<div style="display:flex;justify-content:space-between;gap:8px;cursor:pointer" onclick="closeModal();${n.t==='memo'?`showMemo('${n.id}')`:`showWsNote('${n.id}')`}"><span>📋 ${escapeHtml(n.title||'議事録')} <span class="pill muted" style="font-size:10px">${n.t==='memo'?'メモ':'WS'}</span></span><span class="muted" style="font-size:11px">${n.date||''}</span></div>`)).join(''):'<div class="muted" style="font-size:12px">—</div>';
+  const tasksHtml=rel.wstasks.length?rel.wstasks.slice().sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999')).map(t=>line(`<div style="display:flex;justify-content:space-between;gap:8px"><span>${t.status==='完了'?'✅':'▫️'} ${escapeHtml(t.title||'')}</span><span style="display:flex;gap:8px;align-items:center">${wsMemberChip(t.assignee)}<span class="muted" style="font-size:10px">${t.due?fmtDate(t.due):''}</span></span></div>`)).join(''):'<div class="muted" style="font-size:12px">—</div>';
+  const dealsAll=[...rel.deals.map(d=>({title:d.title,amt:d.amount,stage:d.stage})),...rel.placements.map(pp=>({title:(pp.name||'候補者')+'（'+(pp.biz||'')+'）',amt:pp.revenue,stage:pp.status}))];
+  const dealsHtml=dealsAll.length?dealsAll.map(d=>line(`<div style="display:flex;justify-content:space-between;gap:8px"><span>💼 ${escapeHtml(d.title||'')} ${d.stage?`<span class="pill muted" style="font-size:10px">${escapeHtml(d.stage)}</span>`:''}</span>${d.amt?`<b>${yen(d.amt)}</b>`:''}</div>`)).join(''):'<div class="muted" style="font-size:12px">—</div>';
+  const contact=[x.tel?`☎ ${escapeHtml(x.tel)}`:'',x.email?`✉ ${escapeHtml(x.email)}`:'',x.website?`<a href="${escapeHtml(x.website)}" target="_blank" rel="noopener" style="color:var(--accent)">🌐 サイト</a>`:''].filter(Boolean).join('　');
+  openModal(`${x.name||'クライアント'}`,`
+    <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px">${clStatusPill(x.status)}${x.kana?`<span class="muted" style="font-size:12px">${escapeHtml(x.kana)}</span>`:''}</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+      <div style="flex:1;min-width:90px;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px 11px"><div class="muted" style="font-size:11px">契約</div><div style="font-weight:700">${rel.contracts.length}件${cAmt?`<span style="font-size:12px;font-weight:400"> / ${yen(cAmt)}</span>`:''}</div></div>
+      <div style="flex:1;min-width:90px;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px 11px"><div class="muted" style="font-size:11px">タスク</div><div style="font-weight:700">${done}/${rel.wstasks.length}</div></div>
+      <div style="flex:1;min-width:90px;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px 11px"><div class="muted" style="font-size:11px">未入金</div><div style="font-weight:700;color:${unpaid.length?'#ef4444':'var(--txt)'}">${unpaid.length}件</div></div>
+    </div>
+    ${kv('先方担当', escapeHtml(x.person||'—')+(x.role?`（${escapeHtml(x.role)}）`:''))}
+    ${kv('連絡先', contact||'—')}
+    ${kv('住所', escapeHtml(x.address||''))}
+    ${kv('自社担当 / 事業', `${escapeHtml(x.owner||'—')} / ${escapeHtml(x.biz||'—')}`)}
+    ${kv('経由', escapeHtml(x.source||''))}
+    ${kv('想定取引額', x.amount?yen(x.amount):'')}
+    ${kv('次回フォロー', x.nextDate?`${fmtDate(x.nextDate)}${x.nextAction?`　<span style="font-weight:400">${escapeHtml(x.nextAction)}</span>`:''}`:'')}
+    ${(x.tags||[]).length?`<div style="margin-top:8px">${(x.tags||[]).map(t=>`<span class="pill muted" style="font-size:11px">#${escapeHtml(t)}</span>`).join(' ')}</div>`:''}
+    ${x.note?`<div style="margin-top:12px"><div class="muted" style="font-size:12px;margin-bottom:4px">メモ</div><div style="font-size:13px;line-height:1.7;white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px">${escapeHtml(x.note)}</div></div>`:''}
+    ${sec('📄 契約', contractsHtml, rel.contracts.length)}
+    ${sec('📋 議事録・メモ', notesHtml, notes.length)}
+    ${sec('✅ タスク', tasksHtml, rel.wstasks.length)}
+    ${sec('💼 案件・提案', dealsHtml, dealsAll.length)}`,
+    ed?()=>{ closeModal(); editClient(id); }:null);
+  const sv=document.getElementById('modal-save');
+  if(ed){ sv.textContent='✏️ 編集する'; sv.style.display=''; } else sv.style.display='none';
+}
+function editClient(id){
+  const x=(STORE.clients||[]).find(z=>z.id===id)||{name:'',kana:'',person:'',role:'',tel:'',email:'',address:'',website:'',status:'見込み',biz:'全社',owner:'高嶋',source:'',amount:0,nextDate:'',nextAction:'',tags:[],note:''};
+  const bizOpts=['全社',...(STORE.businesses||[]).map(z=>z.name)];
+  const members=(typeof wsMembers==='function')?wsMembers():['高嶋','早田'];
+  openModal(id?'クライアントを編集':'クライアントを追加',`
+    <div class="field two"><label>会社名 / ふりがな</label>
+      <input id="cl_name" value="${escapeHtml(x.name||'')}" placeholder="株式会社◯◯">
+      <input id="cl_kana" value="${escapeHtml(x.kana||'')}" placeholder="かぶしきがいしゃ…"></div>
+    <div class="field two"><label>先方担当 / 役職</label>
+      <input id="cl_person" value="${escapeHtml(x.person||'')}" placeholder="山田 太郎">
+      <input id="cl_role" value="${escapeHtml(x.role||'')}" placeholder="部長"></div>
+    <div class="field two"><label>電話 / メール</label>
+      <input id="cl_tel" value="${escapeHtml(x.tel||'')}" placeholder="03-...">
+      <input id="cl_email" type="email" value="${escapeHtml(x.email||'')}" placeholder="name@example.com"></div>
+    <div class="field two"><label>住所 / Web</label>
+      <input id="cl_addr" value="${escapeHtml(x.address||'')}" placeholder="東京都…">
+      <input id="cl_web" type="url" value="${escapeHtml(x.website||'')}" placeholder="https://…"></div>
+    <div class="field two"><label>ステータス / 事業</label>
+      <select id="cl_status">${CL_STATUS.map(s=>`<option${s.k===x.status?' selected':''}>${s.k}</option>`).join('')}</select>
+      <select id="cl_biz">${bizOpts.map(o=>`<option${o===x.biz?' selected':''}>${o}</option>`).join('')}</select></div>
+    <div class="field two"><label>自社担当 / 想定取引額(年)</label>
+      <input id="cl_owner" list="cl-mem" value="${escapeHtml(x.owner||'')}" placeholder="高嶋 / 早田">
+      <datalist id="cl-mem">${members.map(m=>`<option value="${escapeHtml(m)}">`).join('')}</datalist>
+      <input id="cl_amt" type="number" value="${x.amount||0}"></div>
+    <div class="field"><label>経由（流入経路）</label>
+      <input id="cl_source" list="cl-src" value="${escapeHtml(x.source||'')}" placeholder="紹介 / 問い合わせ / 展示会 など">
+      <datalist id="cl-src">${['紹介','問い合わせ','既存取引','展示会・イベント','テレアポ','Web広告','その他'].map(v=>`<option value="${v}">`).join('')}</datalist></div>
+    <div class="field two"><label>次回フォロー日 / 内容</label>
+      <input id="cl_ndate" type="date" value="${x.nextDate||''}">
+      <input id="cl_naction" value="${escapeHtml(x.nextAction||'')}" placeholder="提案書の送付 など"></div>
+    <div class="field"><label>タグ（カンマ区切り）</label>
+      <input id="cl_tags" value="${escapeHtml((x.tags||[]).join(', '))}" placeholder="優良, 定例あり, 増員案件"></div>
+    <div class="field"><label>メモ</label><textarea id="cl_note" rows="3" placeholder="関係性・注意点・経緯など">${escapeHtml(x.note||'')}</textarea></div>`,
+    ()=>{ const nm=fv('cl_name').trim(); if(!nm) throw new Error('会社名を入力してください');
+      const tags=fv('cl_tags').split(',').map(s=>s.trim()).filter(Boolean);
+      return upsert('clients',{id:id||b(),name:nm,kana:fv('cl_kana').trim(),person:fv('cl_person').trim(),role:fv('cl_role').trim(),
+        tel:fv('cl_tel').trim(),email:fv('cl_email').trim(),address:fv('cl_addr').trim(),website:fv('cl_web').trim(),
+        status:fv('cl_status'),biz:fv('cl_biz'),owner:fv('cl_owner').trim(),source:fv('cl_source').trim(),
+        amount:fnum('cl_amt'),nextDate:fv('cl_ndate'),nextAction:fv('cl_naction').trim(),tags,note:fv('cl_note'),updated:Date.now()},id); });
+}
+
 // ---- パスワード変更（本人） ----
 function changePassword(){
   openModal('パスワード変更',`${field('現在のパスワード','p_old','','password')}${field('新しいパスワード（6文字以上）','p_new','','password')}`,
@@ -1965,19 +2568,24 @@ function docBuilder(ed){
         <h3>${esc(d.type)}の内容</h3>
         <div class="field two"><label>種別 / 文書番号</label>
           <select onchange="curDoc.type=this.value;render()">${selOpts(['見積書','請求書'],d.type)}</select>
-          <input value="${esc(d.number)}" oninput="curDoc.number=this.value"></div>
-        <div class="field"><label>宛先（会社名）</label><input list="cust_dl" value="${esc(d.client)}" oninput="curDoc.client=this.value"><datalist id="cust_dl">${custNames().map(n=>`<option value="${esc(n)}">`).join('')}</datalist></div>
-        <div class="field two"><label>発行日 / 支払期限</label><input type="date" value="${d.date}" oninput="curDoc.date=this.value"><input type="date" value="${d.due||''}" oninput="curDoc.due=this.value"></div>
+          <input value="${esc(d.number)}" oninput="curDoc.number=this.value;refreshDocPreview()"></div>
+        <div class="field"><label>宛先（会社名）</label><input list="cust_dl" value="${esc(d.client)}" oninput="curDoc.client=this.value;refreshDocPreview()"><datalist id="cust_dl">${custNames().map(n=>`<option value="${esc(n)}">`).join('')}</datalist></div>
+        <div class="field two"><label>発行日 / 支払期限</label><input type="date" value="${d.date}" oninput="curDoc.date=this.value;refreshDocPreview()"><input type="date" value="${d.due||''}" oninput="curDoc.due=this.value;refreshDocPreview()"></div>
         <label style="font-size:12px;color:var(--muted)">明細</label>
         <table style="margin:4px 0"><thead><tr><th>品目</th><th>数量</th><th>単価</th><th class="num">金額</th><th></th></tr></thead><tbody>${itemRows}</tbody></table>
         <button class="btn ghost sm" onclick="docAddItem()">＋ 明細を追加</button>
-        <div class="field two" style="margin-top:12px"><label>消費税率(%) / 状態</label><input type="number" value="${d.taxRate}" oninput="curDoc.taxRate=this.value;render()"><select onchange="curDoc.status=this.value">${selOpts(['作成済み','入金待ち','入金済み'],d.status)}</select></div>
-        <div class="field"><label>備考</label><textarea rows="2" oninput="curDoc.note=this.value">${esc(d.note||'')}</textarea></div>
+        <div class="field two" style="margin-top:12px"><label>消費税率(%) / 状態</label><input type="number" value="${d.taxRate}" oninput="curDoc.taxRate=this.value;refreshDocPreview()"><select onchange="curDoc.status=this.value">${selOpts(['作成済み','入金待ち','入金済み'],d.status)}</select></div>
+        <div class="field"><label>備考</label><textarea rows="2" oninput="curDoc.note=this.value;refreshDocPreview()">${esc(d.note||'')}</textarea></div>
       </div>
       <div><div id="print-area">${docHTML(d)}</div></div>
     </div>`;
 }
-function docItem(i,k,v){ curDoc.items[i][k]=(k==='name')?v:(+v||0); const cell=document.querySelectorAll('#docs_body tbody tr')[i]; render(); }
+function refreshDocPreview(){
+  if(!curDoc)return;
+  const pa=document.getElementById('print-area'); if(pa) pa.innerHTML=docHTML(curDoc);
+  document.querySelectorAll('#docs_body tbody tr').forEach((tr,i)=>{ const it=curDoc.items[i]; if(it&&tr.children[3]) tr.children[3].textContent=yen((+it.qty||0)*(+it.unit||0)); });
+}
+function docItem(i,k,v){ if(!curDoc.items[i])return; curDoc.items[i][k]=(k==='name')?v:(+v||0); refreshDocPreview(); }
 function docAddItem(){ curDoc.items.push({name:'',qty:1,unit:0}); render(); }
 function docDelItem(i){ curDoc.items.splice(i,1); if(!curDoc.items.length)curDoc.items.push({name:'',qty:1,unit:0}); render(); }
 function docHTML(d){

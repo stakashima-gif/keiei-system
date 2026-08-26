@@ -1078,28 +1078,69 @@ function editBank(id){
 
 // ---- タスク管理 ----
 let taskFilter='all';
+let taskAssignee='all';   // 担当者フィルタ
+let taskGroupBy=false;    // 担当者別に表示
+function taskAssignees(){
+  const set=new Set();
+  (STORE.tasks||[]).forEach(t=>set.add((t.assignee||'').trim()||'未割当'));
+  return [...set].sort((a,b)=>a==='未割当'?1:b==='未割当'?-1:a.localeCompare(b,'ja'));
+}
+function taskRowsHtml(list,ed){
+  return list.map(t=>{const od=t.status!=='完了'&&t.due<todayISO();return `<tr>
+    <td>${prioDot(t.priority)} ${t.priority}</td><td><b>${escapeHtml(t.title||'')}</b></td><td>${escapeHtml(t.assignee||'—')}</td><td><span class="muted">${escapeHtml(t.biz||'')}</span></td>
+    <td class="${od?'down':''}">${fmtDate(t.due)}${od?' ⚠️':''}</td><td><span class="pill ${t.status==='完了'?'ok':t.status==='進行中'?'info':'muted'}">${t.status}</span></td>
+    ${ed?`<td class="row-actions"><button class="icon-btn" onclick="editTask('${t.id}')">✏️</button><button class="icon-btn" onclick="del('tasks','${t.id}')">🗑</button></td>`:''}
+  </tr>`;}).join('');
+}
 function renderTasks(c,p){
   const ed=canEdit('tasks');
   setHeader(p.title,p.sub, ed?`<button class="btn" onclick="editTask()">＋ タスクを追加</button>`:roBadge());
   const tasks=STORE.tasks||[]; const counts={未着手:0,進行中:0,完了:0}; tasks.forEach(t=>counts[t.status]=(counts[t.status]||0)+1);
-  let list=tasks.slice(); if(taskFilter!=='all') list=list.filter(t=>t.status===taskFilter); list.sort((a,b)=>a.due.localeCompare(b.due));
+  const asgKey=t=>((t.assignee||'').trim()||'未割当');
+  // フィルタ適用（状態＋担当）
+  const applyFilter=arr=>{ let l=arr.slice();
+    if(taskFilter!=='all') l=l.filter(t=>t.status===taskFilter);
+    if(taskAssignee!=='all') l=l.filter(t=>asgKey(t)===taskAssignee);
+    return l.sort((a,b)=>(a.due||'').localeCompare(b.due||'')); };
+  const asgOpts=['all',...taskAssignees()];
+  const thead=`<thead><tr><th>優先</th><th>タスク</th><th>担当</th><th>事業</th><th>期限</th><th>状態</th>${ed?'<th></th>':''}</tr></thead>`;
+  // 本体：担当者別 or 一覧
+  let bodyHtml;
+  if(taskGroupBy){
+    const asgs=taskAssignees().filter(a=>taskAssignee==='all'||a===taskAssignee);
+    bodyHtml=asgs.map(a=>{
+      const list=applyFilter(tasks.filter(t=>asgKey(t)===a));
+      const open=list.filter(t=>t.status!=='完了').length;
+      return `<div class="card">
+        <h3 style="display:flex;align-items:center;gap:10px">👤 ${escapeHtml(a)}
+          <span class="pill muted">${list.length}件</span>${open?`<span class="pill info">未完 ${open}</span>`:'<span class="pill ok">完了</span>'}</h3>
+        <table>${thead}<tbody>${taskRowsHtml(list,ed)||`<tr><td colspan="${ed?7:6}"><div class="empty">該当なし</div></td></tr>`}</tbody></table></div>`;
+    }).join('')||`<div class="card"><div class="empty">タスクがありません</div></div>`;
+  } else {
+    const list=applyFilter(tasks);
+    bodyHtml=`<div class="card"><table>${thead}
+      <tbody>${taskRowsHtml(list,ed)||`<tr><td colspan="${ed?7:6}"><div class="empty">該当するタスクがありません</div></td></tr>`}</tbody></table></div>`;
+  }
   c.innerHTML=`
     <div class="grid kpis">
       ${kpi('全タスク','✅',tasks.length,'')}${kpi('進行中','🔄',counts.進行中||0,'')}${kpi('未着手','📋',counts.未着手||0,'')}
       ${kpi('期限超過','⏰',tasks.filter(t=>t.status!=='完了'&&t.due<todayISO()).length,'')}
     </div><div style="height:16px"></div>
-    <div class="toolbar"><select onchange="taskFilter=this.value;render()">
-      <option value="all"${taskFilter==='all'?' selected':''}>すべて</option>
-      <option value="未着手"${taskFilter==='未着手'?' selected':''}>未着手</option>
-      <option value="進行中"${taskFilter==='進行中'?' selected':''}>進行中</option>
-      <option value="完了"${taskFilter==='完了'?' selected':''}>完了</option></select></div>
-    <div class="card"><table>
-    <thead><tr><th>優先</th><th>タスク</th><th>担当</th><th>事業</th><th>期限</th><th>状態</th>${ed?'<th></th>':''}</tr></thead>
-    <tbody>${list.map(t=>{const od=t.status!=='完了'&&t.due<todayISO();return `<tr>
-      <td>${prioDot(t.priority)} ${t.priority}</td><td><b>${t.title}</b></td><td>${t.assignee}</td><td><span class="muted">${t.biz}</span></td>
-      <td class="${od?'down':''}">${fmtDate(t.due)}${od?' ⚠️':''}</td><td><span class="pill ${t.status==='完了'?'ok':t.status==='進行中'?'info':'muted'}">${t.status}</span></td>
-      ${ed?`<td class="row-actions"><button class="icon-btn" onclick="editTask('${t.id}')">✏️</button><button class="icon-btn" onclick="del('tasks','${t.id}')">🗑</button></td>`:''}
-    </tr>`;}).join('')||`<tr><td colspan="${ed?7:6}"><div class="empty">該当するタスクがありません</div></td></tr>`}</tbody></table></div>`;
+    <div class="toolbar" style="gap:10px;flex-wrap:wrap;align-items:center">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px" class="muted">担当
+        <select onchange="taskAssignee=this.value;render()">
+          <option value="all"${taskAssignee==='all'?' selected':''}>全員</option>
+          ${taskAssignees().map(a=>`<option value="${escapeAttr(a)}"${taskAssignee===a?' selected':''}>${escapeHtml(a)}</option>`).join('')}
+        </select></label>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px" class="muted">状態
+        <select onchange="taskFilter=this.value;render()">
+          <option value="all"${taskFilter==='all'?' selected':''}>すべて</option>
+          <option value="未着手"${taskFilter==='未着手'?' selected':''}>未着手</option>
+          <option value="進行中"${taskFilter==='進行中'?' selected':''}>進行中</option>
+          <option value="完了"${taskFilter==='完了'?' selected':''}>完了</option></select></label>
+      <button class="btn ghost sm" style="${taskGroupBy?'background:var(--accent);color:#fff;border-color:var(--accent)':''}" onclick="taskGroupBy=!taskGroupBy;render()">👥 担当者別に表示${taskGroupBy?' ✓':''}</button>
+    </div>
+    ${bodyHtml}`;
 }
 
 // ---- 契約管理 ----

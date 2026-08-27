@@ -43,7 +43,7 @@ PAGE_COLLECTIONS = {
     "memos":     ["memos", "contracts"],            # 打ち合わせメモ（クライアント検索で契約情報も参照）
     "placements":["placements", "businesses"],      # 人材提案・案件管理（BPO等・売上/報酬/粗利）
     "workspace": ["wsclients", "wstasks", "wsnotes"], # クライアント別ワークスペース（議事録＋タスク・進捗共有）
-    "clients":   ["clients", "contracts", "memos", "wstasks", "wsnotes", "deals", "documents", "placements", "customers", "businesses"], # クライアント管理（360°ビュー）
+    "clients":   ["clients", "contracts", "orders", "memos", "wstasks", "wsnotes", "deals", "documents", "placements", "customers", "businesses"], # クライアント管理（情報＋契約書＋発注書＋打合せを集約）
     # ── AI業務サポート（拡張） ──
     "inbox":      ["inbox", "contracts", "customers"],                 # 返信ボックス（LINE/メール/Slack/Chatwork）
     "salesai":    ["deals", "customers", "contracts", "memos"],        # 営業サポート（商談・顧客・AI提案）
@@ -58,7 +58,7 @@ PAGE_WRITE = {
     "business": ["businesses"], "sales": ["sales", "salesdeals"], "finance": ["finance"],
     "breakeven": ["cost"], "tasks": ["tasks"], "contracts": ["contracts"], "people": ["people"],
     "tools": ["tools"], "recruits": ["recruits"], "cashflow": ["cashflow", "banks", "cftxns"], "memos": ["memos"], "placements": ["placements"],
-    "workspace": ["wsclients", "wstasks", "wsnotes"], "clients": ["clients"],
+    "workspace": ["wsclients", "wstasks", "wsnotes"], "clients": ["clients", "contracts", "orders", "memos"],
     "dashboard": [], "analysis": [],
     "inbox": ["inbox"], "salesai": ["deals", "customers"], "docs": ["documents", "orgprofile"],
     "billing": ["documents"], "expenses": ["expenses"], "timesheets": ["timesheets"], "reminders": ["reminders"],
@@ -772,6 +772,11 @@ def seed_store():
              "tel": "03-5555-6666", "email": "", "address": "", "website": "",
              "status": "見込み", "biz": "RPO事業", "owner": "高嶋", "source": "展示会・イベント", "amount": 0,
              "nextDate": days(3), "nextAction": "初回提案アポの調整", "tags": ["新規"], "note": "展示会で名刺交換。採用強化に関心。", "updated": now()},
+        ],
+        # 発注書（クライアント別・件名／金額／日付／ファイルリンク）
+        "orders": [
+            {"id": gid("or"), "client": "取引先A", "name": "BPO業務 発注書 4月分", "date": days(-25), "amount": 2400000, "url": "", "note": ""},
+            {"id": gid("or"), "client": "取引先C", "name": "SESエンジニア 発注書", "date": days(-4), "amount": 1600000, "url": "", "note": "単価80万×2名"},
         ],
         # ── クライアント別ワークスペース（Notion風・議事録＋タスクを進捗共有）──
         "wsclients": [

@@ -223,7 +223,7 @@ const PAGES = [
   {id:'recruits', icon:'🧑‍💼', name:'採用管理', title:'採用管理', sub:'求職者管理・5項目スコア評価・Airワーク連携', sect:'業務'},
   {id:'memos', icon:'📝', name:'打ち合わせメモ', title:'打ち合わせメモ', sub:'商談・打ち合わせの記録。クライアント名で検索できます', sect:'業務'},
   {id:'placements', icon:'🤝', name:'人材提案管理', title:'人材提案・案件管理', sub:'候補者ごとの提案状況・リードタイム・売上・報酬・粗利を管理', sect:'業務'},
-  {id:'clients', icon:'📇', name:'クライアント管理', title:'クライアント管理', sub:'取引先の基本情報・ステータス・担当を一元管理。契約/議事録/タスク/案件を横断表示', sect:'業務'},
+  {id:'clients', icon:'📇', name:'クライアント管理', title:'クライアント管理', sub:'クライアント別に「情報（HP・契約書・発注書・担当者）」と「打ち合わせ内容」を一元管理', sect:'業務'},
   {id:'workspace', icon:'🗂️', name:'ワークスペース', title:'クライアント・ワークスペース', sub:'クライアント別に議事録とタスクを集約。高嶋・早田で進捗を共有', sect:'業務'},
   {id:'tools', icon:'🔗', name:'ツール', title:'ツール一元管理', sub:'よく使うツールへのリンク集', sect:'ツール'},
   {id:'inbox', icon:'📩', name:'返信ボックス', title:'返信ボックス', sub:'メール・Slack・Chatworkの要返信を一覧。AIが返信案を作成', sect:'AI業務サポート'},
@@ -234,7 +234,7 @@ const PAGES = [
   {id:'timesheets', icon:'⏱️', name:'勤怠・工数', title:'勤怠・工数', sub:'日次の作業時間を事業・案件別に記録', sect:'AI業務サポート'},
   {id:'reminders', icon:'🔔', name:'定型リマインド', title:'定型リマインド', sub:'月次の定型業務を期日管理', sect:'AI業務サポート'},
 ];
-const PAGE_WRITE={business:['businesses'],sales:['sales','salesdeals'],finance:['finance'],breakeven:['cost'],tasks:['tasks'],contracts:['contracts'],people:['people'],tools:['tools'],recruits:['recruits'],cashflow:['cashflow'],memos:['memos'],placements:['placements'],workspace:['wsclients','wstasks','wsnotes'],clients:['clients'],dashboard:[],analysis:[],
+const PAGE_WRITE={business:['businesses'],sales:['sales','salesdeals'],finance:['finance'],breakeven:['cost'],tasks:['tasks'],contracts:['contracts'],people:['people'],tools:['tools'],recruits:['recruits'],cashflow:['cashflow'],memos:['memos'],placements:['placements'],workspace:['wsclients','wstasks','wsnotes'],clients:['clients','contracts','orders','memos'],dashboard:[],analysis:[],
   inbox:['inbox'],salesai:['deals','customers'],docs:['documents','orgprofile'],billing:['documents'],expenses:['expenses'],timesheets:['timesheets'],reminders:['reminders']};
 const PAGE_NAME=Object.fromEntries(PAGES.map(p=>[p.id,p.name]));
 
@@ -1262,12 +1262,23 @@ function editTask(id){
     <div class="field two"><label>優先度 / 状態</label><select id="f_prio">${['高','中','低'].map(o=>`<option${o===x.priority?' selected':''}>${o}</option>`).join('')}</select><select id="f_status">${['未着手','進行中','完了'].map(o=>`<option${o===x.status?' selected':''}>${o}</option>`).join('')}</select></div>`,
     ()=>upsert('tasks',{id:id||b(),title:fv('f_title'),assignee:fv('f_as'),biz:fv('f_biz'),due:fv('f_due'),priority:fv('f_prio'),status:fv('f_status')},id));
 }
-function editContract(id){
-  const x=(STORE.contracts||[]).find(z=>z.id===id)||{client:'',type:'保守契約',amount:0,start:todayISO(),end:addDays(365),status:'有効',auto:true};
-  openModal(id?'契約を編集':'契約を追加',`${field('取引先','f_client',x.client)}${selField('種別','f_type',x.type,['保守契約','SaaS年間','受託開発','コンサル','その他'])}${field('契約金額(円)','f_amount',x.amount,'number')}
+function editContract(id, presetClient){
+  const x=(STORE.contracts||[]).find(z=>z.id===id)||{client:presetClient||'',type:'保守契約',amount:0,start:todayISO(),end:addDays(365),status:'有効',auto:true,fileUrl:''};
+  openModal(id?'契約を編集':'契約を追加',`${field('取引先','f_client',escapeHtml(x.client||''))}${selField('種別','f_type',x.type,['保守契約','SaaS年間','受託開発','コンサル','BPO業務委託','RPO契約','SES契約','その他'])}${field('契約金額(円)','f_amount',x.amount,'number')}
     <div class="field two"><label>開始日 / 終了日</label><input id="f_start" type="date" value="${x.start}"><input id="f_end" type="date" value="${x.end}"></div>
-    <div class="field two"><label>状態 / 自動更新</label><select id="f_status">${['有効','更新待ち','終了'].map(o=>`<option${o===x.status?' selected':''}>${o}</option>`).join('')}</select><select id="f_auto"><option value="true"${x.auto?' selected':''}>あり</option><option value="false"${!x.auto?' selected':''}>なし</option></select></div>`,
-    ()=>upsert('contracts',{id:id||b(),client:fv('f_client'),type:fv('f_type'),amount:fnum('f_amount'),start:fv('f_start'),end:fv('f_end'),status:fv('f_status'),auto:fv('f_auto')==='true'},id));
+    <div class="field two"><label>状態 / 自動更新</label><select id="f_status">${['有効','更新待ち','終了'].map(o=>`<option${o===x.status?' selected':''}>${o}</option>`).join('')}</select><select id="f_auto"><option value="true"${x.auto?' selected':''}>あり</option><option value="false"${!x.auto?' selected':''}>なし</option></select></div>
+    <div class="field"><label>契約書ファイルのリンク（Google Drive / PDF等のURL）</label><input id="f_fileurl" type="url" value="${escapeHtml(x.fileUrl||'')}" placeholder="https://…"></div>`,
+    ()=>upsert('contracts',{id:id||b(),client:fv('f_client'),type:fv('f_type'),amount:fnum('f_amount'),start:fv('f_start'),end:fv('f_end'),status:fv('f_status'),auto:fv('f_auto')==='true',fileUrl:fv('f_fileurl').trim()},id));
+}
+function editOrder(id, presetClient){
+  const x=(STORE.orders||[]).find(z=>z.id===id)||{client:presetClient||'',name:'',date:todayISO(),amount:0,url:'',note:''};
+  openModal(id?'発注書を編集':'発注書を追加',`${field('取引先','o_client',escapeHtml(x.client||''))}
+    ${field('件名','o_name',escapeHtml(x.name||''))}
+    <div class="field two"><label>発注日 / 金額(円)</label><input id="o_date" type="date" value="${x.date||todayISO()}"><input id="o_amount" type="number" value="${x.amount||0}"></div>
+    <div class="field"><label>発注書ファイルのリンク（URL）</label><input id="o_url" type="url" value="${escapeHtml(x.url||'')}" placeholder="https://…"></div>
+    <div class="field"><label>メモ</label><input id="o_note" value="${escapeHtml(x.note||'')}"></div>`,
+    ()=>{ if(!fv('o_name').trim()) throw new Error('件名を入力してください');
+      return upsert('orders',{id:id||b(),client:fv('o_client'),name:fv('o_name').trim(),date:fv('o_date'),amount:fnum('o_amount'),url:fv('o_url').trim(),note:fv('o_note').trim()},id); });
 }
 function editPerson(id){
   const x=(STORE.people||[]).find(z=>z.id===id)||{name:'',role:'',biz:((STORE.businesses||[])[0]||{}).name||'',type:'正社員',cost:0,joined:todayISO(),rating:'B'};
@@ -1838,8 +1849,8 @@ function showMemo(id){
   const sv=document.getElementById('modal-save');
   if(ed){ sv.textContent='✏️ 編集する'; sv.style.display=''; } else sv.style.display='none';
 }
-function editMemo(id){
-  const x=(STORE.memos||[]).find(z=>z.id===id)||{date:todayISO(),client:'',title:'',attendees:'',via:'',background:'',content:'',nextAction:'',minutesUrl:'',biz:'全社'};
+function editMemo(id, presetClient){
+  const x=(STORE.memos||[]).find(z=>z.id===id)||{date:todayISO(),client:presetClient||'',title:'',attendees:'',via:'',background:'',content:'',nextAction:'',minutesUrl:'',biz:'全社'};
   const content=x.content!==undefined?x.content:(x.body||'');  // 旧データ互換
   const bizOpts=['全社',...(STORE.businesses||[]).map(z=>z.name)];
   const clients=memoClients();
@@ -2124,7 +2135,8 @@ function editWsNote(id, presetClient){
 // クライアント管理（CRM・会社マスタ／360°ビュー）
 //==================================================================
 let clientQ='';          // 検索
-let clientStatus='all';  // ステータス絞り込み
+let clientStatus='all';  // ステータス絞り込み（互換のため保持）
+let clientSel=null;      // 選択中クライアントID
 const CL_STATUS=[
   {k:'見込み',   c:'#94a3b8'},
   {k:'商談中',   c:'#3b82f6'},
@@ -2151,107 +2163,127 @@ function clRelated(name){
 function renderClients(c,p){
   const ed=canEdit('clients');
   setHeader(p.title,p.sub, ed?`<button class="btn" onclick="editClient()">＋ クライアントを追加</button>`:roBadge());
-  const chips=['all',...CL_STATUS.map(s=>s.k)].map(k=>{
-    const on=clientStatus===k;
-    const lbl=k==='all'?'すべて':k;
-    return `<button class="btn ghost sm" style="${on?'background:var(--accent);color:#fff;border-color:var(--accent)':''}" onclick="clientStatus='${k}';clRenderBody()">${lbl}</button>`;
-  }).join('');
-  c.innerHTML=`
-    <div class="toolbar" style="gap:10px;flex-wrap:wrap">
-      <input id="cl-q" placeholder="🔎 会社名・担当者・メモ・タグで検索…" value="${escapeHtml(clientQ)}"
-        oninput="clientQ=this.value;clRenderBody()"
-        style="flex:1;min-width:220px;max-width:420px;background:var(--panel);border:1px solid var(--line);color:var(--txt);padding:9px 12px;border-radius:9px;font-size:13px">
-      <div style="display:flex;gap:6px;flex-wrap:wrap">${chips}</div>
-    </div>
-    <div id="cl-kpi"></div>
-    <div id="cl-body"></div>`;
-  clRenderBody();
-}
-function clRenderBody(){
-  const body=document.getElementById('cl-body'); if(!body) return;
-  const ed=canEdit('clients');
-  const all=(STORE.clients||[]).slice();
-  // KPI
-  const kpiEl=document.getElementById('cl-kpi');
-  if(kpiEl){
-    const cnt=k=>all.filter(x=>x.status===k).length;
-    const soon=all.filter(x=>x.nextDate&&daysTo(x.nextDate)>=0&&daysTo(x.nextDate)<=7).length;
-    const tile=(l,v,col)=>`<div style="flex:1;min-width:96px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 13px">
-      <div class="muted" style="font-size:11px">${l}</div><div style="font-size:21px;font-weight:700;color:${col||'var(--txt)'}">${v}</div></div>`;
-    kpiEl.innerHTML=`<div style="display:flex;gap:10px;flex-wrap:wrap;margin:4px 0 14px">
-      ${tile('総クライアント', all.length)}
-      ${tile('既存', cnt('既存'),'#10b981')}
-      ${tile('商談中', cnt('商談中'),'#3b82f6')}
-      ${tile('見込み', cnt('見込み'))}
-      ${tile('今週フォロー', soon, soon?'#f59e0b':'var(--muted)')}
-    </div>`;
+  const clients=(STORE.clients||[]).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||'','ja'));
+  if(clients.length && (!clientSel || !clients.find(x=>x.id===clientSel))) clientSel=clients[0].id;
+  if(!clients.length){
+    c.innerHTML=`<div class="card"><div class="empty">クライアントがまだありません。<br>${ed?'右上の「＋ クライアントを追加」から登録してください。':'管理者が登録すると表示されます。'}</div></div>`;
+    return;
   }
-  // フィルタ＋検索
-  let list=all;
-  if(clientStatus!=='all') list=list.filter(x=>x.status===clientStatus);
-  const q=clientQ.trim().toLowerCase();
-  if(q) list=list.filter(x=>((x.name||'')+' '+(x.kana||'')+' '+(x.person||'')+' '+(x.note||'')+' '+((x.tags||[]).join(' '))+' '+(x.owner||'')+' '+(x.biz||'')).toLowerCase().includes(q));
-  list.sort((a,b)=>(a.name||'').localeCompare(b.name||'','ja'));
-  body.innerHTML=`<div class="card"><h3>クライアント一覧 <span class="pill muted">${list.length}件</span></h3>
-    <div style="overflow-x:auto"><table>
-      <thead><tr><th>会社名</th><th>先方担当</th><th>ステータス</th><th>事業</th><th>自社担当</th><th>契約</th><th>次回フォロー</th>${ed?'<th></th>':''}</tr></thead>
-      <tbody>${list.map(x=>{
-        const rel=clRelated(x.name);
-        const cAmt=sum(rel.contracts,z=>z.amount||0);
-        const od=x.nextDate&&daysTo(x.nextDate)<0;
-        const soon=x.nextDate&&daysTo(x.nextDate)>=0&&daysTo(x.nextDate)<=7;
-        return `<tr style="cursor:pointer" onclick="showClient('${x.id}')">
-          <td><b>${escapeHtml(x.name||'—')}</b>${(x.tags||[]).length?`<div style="margin-top:3px">${(x.tags||[]).slice(0,3).map(t=>`<span class="pill muted" style="font-size:10px">${escapeHtml(t)}</span>`).join(' ')}</div>`:''}</td>
-          <td>${escapeHtml(x.person||'—')}${x.role?`<div class="muted" style="font-size:11px">${escapeHtml(x.role)}</div>`:''}</td>
-          <td>${clStatusPill(x.status)}</td>
-          <td><span class="muted" style="font-size:12px">${escapeHtml(x.biz||'—')}</span></td>
-          <td>${clOwnerChip(x.owner)}</td>
-          <td>${rel.contracts.length?`<span title="契約 ${rel.contracts.length}件">${rel.contracts.length}件${cAmt?`・${yen(cAmt)}`:''}</span>`:'<span class="muted">—</span>'}</td>
-          <td class="${od?'down':''}" style="${od?'color:#ef4444;font-weight:700':soon?'color:#f59e0b;font-weight:600':''}">${x.nextDate?`${fmtDate(x.nextDate)}${od?' 超過':''}`:'<span class="muted" style="font-weight:400">—</span>'}${x.nextAction?`<div class="muted" style="font-size:11px;font-weight:400;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(x.nextAction)}</div>`:''}</td>
-          ${ed?`<td class="row-actions" onclick="event.stopPropagation()"><button class="icon-btn" onclick="editClient('${x.id}')">✏️</button><button class="icon-btn" onclick="del('clients','${x.id}').then(clRenderBody)">🗑</button></td>`:''}
-        </tr>`;}).join('')||`<tr><td colspan="${ed?8:7}"><div class="empty">${q||clientStatus!=='all'?'条件に一致するクライアントがありません':'クライアントがまだありません。「＋ クライアントを追加」から登録してください。'}</div></td></tr>`}</tbody>
-    </table></div></div>`;
-}
-function showClient(id){
-  const x=(STORE.clients||[]).find(z=>z.id===id); if(!x) return;
-  const ed=canEdit('clients');
-  const rel=clRelated(x.name);
-  const kv=(k,v)=>v?`<div class="stat-line"><span class="muted">${k}</span><b>${v}</b></div>`:'';
-  const cAmt=sum(rel.contracts,z=>z.amount||0);
-  const unpaid=rel.docs.filter(d=>d.type==='請求書'&&d.status!=='入金済み');
-  const done=rel.wstasks.filter(t=>t.status==='完了').length;
-  const sec=(title,inner,count)=>`<div style="margin-top:14px"><div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px">${title}${count!==undefined?` <span class="pill muted">${count}</span>`:''}</div>${inner}</div>`;
-  const line=(html)=>`<div class="ws-card" style="margin-bottom:6px">${html}</div>`;
-  const contractsHtml=rel.contracts.length?rel.contracts.map(c=>line(`<div style="display:flex;justify-content:space-between;gap:8px"><span>📄 ${escapeHtml(c.type||'契約')} <span class="pill ${c.status==='有効'?'ok':'warn'}" style="font-size:10px">${escapeHtml(c.status||'')}</span></span><b>${yen(c.amount||0)}</b></div><div class="muted" style="font-size:11px;margin-top:3px">${fmtDate(c.start)}〜${fmtDate(c.end)}</div>`)).join(''):'<div class="muted" style="font-size:12px">—</div>';
-  const notes=[...rel.memos.map(m=>({t:'memo',id:m.id,date:m.date,title:m.title,extra:m.via})),...rel.wsnotes.map(n=>({t:'ws',id:n.id,date:n.date,title:n.title,extra:n.attendees}))].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  const notesHtml=notes.length?notes.map(n=>line(`<div style="display:flex;justify-content:space-between;gap:8px;cursor:pointer" onclick="closeModal();${n.t==='memo'?`showMemo('${n.id}')`:`showWsNote('${n.id}')`}"><span>📋 ${escapeHtml(n.title||'議事録')} <span class="pill muted" style="font-size:10px">${n.t==='memo'?'メモ':'WS'}</span></span><span class="muted" style="font-size:11px">${n.date||''}</span></div>`)).join(''):'<div class="muted" style="font-size:12px">—</div>';
-  const tasksHtml=rel.wstasks.length?rel.wstasks.slice().sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999')).map(t=>line(`<div style="display:flex;justify-content:space-between;gap:8px"><span>${t.status==='完了'?'✅':'▫️'} ${escapeHtml(t.title||'')}</span><span style="display:flex;gap:8px;align-items:center">${wsMemberChip(t.assignee)}<span class="muted" style="font-size:10px">${t.due?fmtDate(t.due):''}</span></span></div>`)).join(''):'<div class="muted" style="font-size:12px">—</div>';
-  const dealsAll=[...rel.deals.map(d=>({title:d.title,amt:d.amount,stage:d.stage})),...rel.placements.map(pp=>({title:(pp.name||'候補者')+'（'+(pp.biz||'')+'）',amt:pp.revenue,stage:pp.status}))];
-  const dealsHtml=dealsAll.length?dealsAll.map(d=>line(`<div style="display:flex;justify-content:space-between;gap:8px"><span>💼 ${escapeHtml(d.title||'')} ${d.stage?`<span class="pill muted" style="font-size:10px">${escapeHtml(d.stage)}</span>`:''}</span>${d.amt?`<b>${yen(d.amt)}</b>`:''}</div>`)).join(''):'<div class="muted" style="font-size:12px">—</div>';
-  const contact=[x.tel?`☎ ${escapeHtml(x.tel)}`:'',x.email?`✉ ${escapeHtml(x.email)}`:'',x.website?`<a href="${escapeHtml(x.website)}" target="_blank" rel="noopener" style="color:var(--accent)">🌐 サイト</a>`:''].filter(Boolean).join('　');
-  openModal(`${x.name||'クライアント'}`,`
-    <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px">${clStatusPill(x.status)}${x.kana?`<span class="muted" style="font-size:12px">${escapeHtml(x.kana)}</span>`:''}</div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px">
-      <div style="flex:1;min-width:90px;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px 11px"><div class="muted" style="font-size:11px">契約</div><div style="font-weight:700">${rel.contracts.length}件${cAmt?`<span style="font-size:12px;font-weight:400"> / ${yen(cAmt)}</span>`:''}</div></div>
-      <div style="flex:1;min-width:90px;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px 11px"><div class="muted" style="font-size:11px">タスク</div><div style="font-weight:700">${done}/${rel.wstasks.length}</div></div>
-      <div style="flex:1;min-width:90px;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px 11px"><div class="muted" style="font-size:11px">未入金</div><div style="font-weight:700;color:${unpaid.length?'#ef4444':'var(--txt)'}">${unpaid.length}件</div></div>
+  c.innerHTML=`
+    <div class="cl2-grid">
+      <div class="card cl2-list" style="padding:12px">
+        <input id="cl-q" placeholder="🔎 会社名で検索…" value="${escapeHtml(clientQ)}" oninput="clientQ=this.value;clRenderList()"
+          style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--line);color:var(--txt);padding:8px 10px;border-radius:8px;font-size:13px;margin-bottom:10px">
+        <div id="cl-listbox"></div>
+      </div>
+      <div class="cl2-info"><div id="cl-info"></div></div>
+      <div class="cl2-main"><div id="cl-meet"></div></div>
     </div>
-    ${kv('先方担当', escapeHtml(x.person||'—')+(x.role?`（${escapeHtml(x.role)}）`:''))}
-    ${kv('連絡先', contact||'—')}
-    ${kv('住所', escapeHtml(x.address||''))}
-    ${kv('自社担当 / 事業', `${escapeHtml(x.owner||'—')} / ${escapeHtml(x.biz||'—')}`)}
-    ${kv('経由', escapeHtml(x.source||''))}
-    ${kv('想定取引額', x.amount?yen(x.amount):'')}
-    ${kv('次回フォロー', x.nextDate?`${fmtDate(x.nextDate)}${x.nextAction?`　<span style="font-weight:400">${escapeHtml(x.nextAction)}</span>`:''}`:'')}
-    ${(x.tags||[]).length?`<div style="margin-top:8px">${(x.tags||[]).map(t=>`<span class="pill muted" style="font-size:11px">#${escapeHtml(t)}</span>`).join(' ')}</div>`:''}
-    ${x.note?`<div style="margin-top:12px"><div class="muted" style="font-size:12px;margin-bottom:4px">メモ</div><div style="font-size:13px;line-height:1.7;white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px">${escapeHtml(x.note)}</div></div>`:''}
-    ${sec('📄 契約', contractsHtml, rel.contracts.length)}
-    ${sec('📋 議事録・メモ', notesHtml, notes.length)}
-    ${sec('✅ タスク', tasksHtml, rel.wstasks.length)}
-    ${sec('💼 案件・提案', dealsHtml, dealsAll.length)}`,
-    ed?()=>{ closeModal(); editClient(id); }:null);
-  const sv=document.getElementById('modal-save');
-  if(ed){ sv.textContent='✏️ 編集する'; sv.style.display=''; } else sv.style.display='none';
+    <style>
+      .cl2-grid{display:grid;grid-template-columns:230px 300px 1fr;gap:14px;align-items:start}
+      @media(max-width:1080px){.cl2-grid{grid-template-columns:220px 1fr}.cl2-main{grid-column:1 / -1}}
+      @media(max-width:720px){.cl2-grid{grid-template-columns:1fr}.cl2-info,.cl2-main{grid-column:auto}}
+      .cl-row{cursor:pointer;padding:9px 10px;border-radius:8px;margin-bottom:5px;border:1px solid transparent}
+      .cl-row:hover{background:var(--bg)}
+      .cl-row.on{background:color-mix(in srgb,var(--accent) 12%,transparent);border-color:var(--accent)}
+      .cl-doc{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:6px}
+      .cl-meet{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px}
+    </style>`;
+  clRenderList(); clRenderInfo(); clRenderMeetings();
+}
+function clLastMeetingDate(name){
+  const ds=(STORE.memos||[]).filter(m=>m.client===name).map(m=>m.date).filter(Boolean).sort();
+  return ds.length?ds[ds.length-1]:'';
+}
+function clRenderList(){
+  const box=document.getElementById('cl-listbox'); if(!box) return;
+  let clients=(STORE.clients||[]).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||'','ja'));
+  const q=clientQ.trim().toLowerCase();
+  if(q) clients=clients.filter(x=>((x.name||'')+' '+(x.kana||'')+' '+(x.person||'')).toLowerCase().includes(q));
+  box.innerHTML=clients.map(x=>{
+    const last=clLastMeetingDate(x.name);
+    return `<div class="cl-row ${x.id===clientSel?'on':''}" onclick="clientSel='${x.id}';clRenderList();clRenderInfo();clRenderMeetings()">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+        <b style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(x.name)}</b>
+        ${clStatusPill(x.status)}
+      </div>
+      <div class="muted" style="font-size:11px;margin-top:3px">${last?('最終打合せ '+fmtDate(last)):'打合せ未記録'}</div>
+    </div>`;
+  }).join('')||`<div class="empty" style="font-size:12px">該当なし</div>`;
+}
+function clRenderInfo(){
+  const el=document.getElementById('cl-info'); if(!el) return;
+  const ed=canEdit('clients');
+  const x=(STORE.clients||[]).find(z=>z.id===clientSel); if(!x){ el.innerHTML=''; return; }
+  const contracts=(STORE.contracts||[]).filter(c=>c.client===x.name).sort((a,b)=>(a.end||'').localeCompare(b.end||''));
+  const orders=(STORE.orders||[]).filter(o=>o.client===x.name).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const linkBtn=(url,label)=>url?`<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="color:var(--accent);font-size:11px;text-decoration:none">${label} ↗</a>`:'<span class="muted" style="font-size:11px">リンク未添付</span>';
+  el.innerHTML=`<div class="card">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+      <div style="min-width:0"><h3 style="margin:0;overflow:hidden;text-overflow:ellipsis">${escapeHtml(x.name)}</h3>
+        <div style="margin-top:5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${clStatusPill(x.status)}<span class="muted" style="font-size:11px">${escapeHtml(x.biz||'')}</span></div></div>
+      ${ed?`<button class="icon-btn" title="クライアント情報を編集" onclick="editClient('${x.id}')">✏️</button>`:''}
+    </div>
+    <div class="cl-doc" style="margin-top:12px">
+      <div class="muted" style="font-size:11px">HP</div>
+      ${x.website?`<a href="${escapeHtml(x.website)}" target="_blank" rel="noopener" style="color:var(--accent);font-size:13px;word-break:break-all">🌐 ${escapeHtml(x.website)}</a>`:'<span class="muted" style="font-size:12px">未登録</span>'}
+    </div>
+    <div class="cl-doc">
+      <div class="muted" style="font-size:11px;margin-bottom:2px">担当者</div>
+      <b style="font-size:13px">${escapeHtml(x.person||'—')}</b>${x.role?`<span class="muted" style="font-size:11px"> ${escapeHtml(x.role)}</span>`:''}
+      ${(x.tel||x.email)?`<div class="muted" style="font-size:12px;margin-top:3px;word-break:break-all">${x.tel?`☎ ${escapeHtml(x.tel)}`:''}${x.tel&&x.email?'　':''}${x.email?`✉ ${escapeHtml(x.email)}`:''}</div>`:''}
+    </div>
+    <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:12px;font-weight:700">📄 契約書 <span class="pill muted">${contracts.length}</span></div>
+      ${ed?`<button class="icon-btn" title="契約を追加" onclick="editContract(null,'${escapeAttr(x.name)}')">＋</button>`:''}
+    </div>
+    ${contracts.length?contracts.map(ct=>`<div class="cl-doc">
+      <div style="display:flex;justify-content:space-between;gap:6px"><b style="font-size:12px">${escapeHtml(ct.type||'契約')}</b><span class="pill ${ct.status==='有効'?'ok':'warn'}" style="font-size:10px">${escapeHtml(ct.status||'')}</span></div>
+      <div class="muted" style="font-size:11px;margin-top:2px">${fmtDate(ct.start)}〜${fmtDate(ct.end)}　${yen(ct.amount||0)}</div>
+      <div style="margin-top:4px;display:flex;gap:12px;align-items:center">${linkBtn(ct.fileUrl,'📎 契約書')}${ed?`<a onclick="editContract('${ct.id}')" style="cursor:pointer;color:var(--muted);font-size:11px">編集</a>`:''}</div>
+    </div>`).join(''):'<div class="muted" style="font-size:12px;margin-bottom:6px">—</div>'}
+    <div style="margin-top:8px;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:12px;font-weight:700">🧾 発注書 <span class="pill muted">${orders.length}</span></div>
+      ${ed?`<button class="icon-btn" title="発注書を追加" onclick="editOrder(null,'${escapeAttr(x.name)}')">＋</button>`:''}
+    </div>
+    ${orders.length?orders.map(o=>`<div class="cl-doc">
+      <div style="display:flex;justify-content:space-between;gap:6px"><b style="font-size:12px">${escapeHtml(o.name||'')}</b><span class="muted" style="font-size:11px">${o.date?fmtDate(o.date):''}</span></div>
+      ${o.amount?`<div class="muted" style="font-size:11px;margin-top:2px">${yen(o.amount)}</div>`:''}
+      <div style="margin-top:4px;display:flex;gap:12px;align-items:center">${linkBtn(o.url,'📎 発注書')}${ed?`<a onclick="editOrder('${o.id}')" style="cursor:pointer;color:var(--muted);font-size:11px">編集</a><a onclick="del('orders','${o.id}').then(clRenderInfo)" style="cursor:pointer;color:var(--muted);font-size:11px">削除</a>`:''}</div>
+    </div>`).join(''):'<div class="muted" style="font-size:12px">—</div>'}
+    ${x.note?`<div class="cl-doc" style="margin-top:10px"><div class="muted" style="font-size:11px;margin-bottom:2px">メモ</div><div style="font-size:12px;line-height:1.6;white-space:pre-wrap">${escapeHtml(x.note)}</div></div>`:''}
+  </div>`;
+}
+function clRenderMeetings(){
+  const el=document.getElementById('cl-meet'); if(!el) return;
+  const ed=canEdit('clients');
+  const x=(STORE.clients||[]).find(z=>z.id===clientSel); if(!x){ el.innerHTML=''; return; }
+  const meets=(STORE.memos||[]).filter(m=>m.client===x.name).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  el.innerHTML=`<div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px">
+      <h3 style="margin:0">🗒️ 打ち合わせ内容 <span class="pill muted">${meets.length}</span></h3>
+      ${ed?`<button class="btn sm" onclick="editMemo(null,'${escapeAttr(x.name)}')">＋ 打ち合わせを追加</button>`:''}
+    </div>
+    <div class="muted" style="font-size:11px;margin-bottom:12px">日付の新しい順に表示。「議事録」リンクからFrictio等の議事録ツールを開けます。</div>
+    ${meets.map(m=>{
+      const content=m.content!==undefined?m.content:(m.body||'');
+      return `<div class="cl-meet">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0">
+            <b style="font-size:14px">${escapeHtml(m.title||'打ち合わせ')}</b>
+            <span class="muted" style="font-size:12px">📅 ${m.date||'—'}</span>
+            ${m.via?`<span class="pill muted" style="font-size:10px">${escapeHtml(m.via)}</span>`:''}
+          </div>
+          ${ed?`<span class="row-actions" style="flex:none"><button class="icon-btn" onclick="editMemo('${m.id}','${escapeAttr(x.name)}')">✏️</button><button class="icon-btn" onclick="del('memos','${m.id}').then(clRenderMeetings)">🗑</button></span>`:''}
+        </div>
+        ${m.attendees?`<div class="muted" style="font-size:11px;margin-top:5px">👥 ${escapeHtml(m.attendees)}</div>`:''}
+        ${m.background?`<div style="margin-top:6px;font-size:12px"><span class="muted">背景：</span>${escapeHtml(m.background)}</div>`:''}
+        ${content?`<div style="margin-top:6px;font-size:13px;line-height:1.7;white-space:pre-wrap">${escapeHtml(content)}</div>`:''}
+        ${m.nextAction?`<div style="margin-top:6px;font-size:12px"><span class="muted">次回アクション：</span>${escapeHtml(m.nextAction)}</div>`:''}
+        ${m.minutesUrl?`<div style="margin-top:9px"><a href="${escapeHtml(m.minutesUrl)}" target="_blank" rel="noopener" style="color:var(--accent);font-size:12px;text-decoration:none">📋 議事録ツールを開く ↗</a></div>`:''}
+      </div>`;
+    }).join('')||`<div class="empty">打ち合わせ記録がまだありません。${ed?'「＋ 打ち合わせを追加」から記録してください。':''}</div>`}
+  </div>`;
 }
 function editClient(id){
   const x=(STORE.clients||[]).find(z=>z.id===id)||{name:'',kana:'',person:'',role:'',tel:'',email:'',address:'',website:'',status:'見込み',biz:'全社',owner:'高嶋',source:'',amount:0,nextDate:'',nextAction:'',tags:[],note:''};

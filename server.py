@@ -44,7 +44,7 @@ PAGE_COLLECTIONS = {
     "cashflow":  ["cashflow", "banks", "cftxns"],   # 資金繰り（設定・口座マスタ・入出金明細）
     "memos":     ["memos", "contracts"],            # 打ち合わせメモ（クライアント検索で契約情報も参照）
     "placements":["placements", "businesses"],      # 人材提案・案件管理（BPO等・売上/報酬/粗利）
-    "workspace": ["wsclients", "wstasks", "wsnotes"], # クライアント別ワークスペース（議事録＋タスク・進捗共有）
+    "workspace": ["clients", "clientdocs", "contracts", "orders", "memos", "wstasks", "wsnotes", "businesses"], # クライアント管理と統合（同じclients／打合せ=memos／進捗=wstasks）
     "clients":   ["clients", "clientdocs", "contracts", "orders", "memos", "wstasks", "wsnotes", "deals", "documents", "placements", "customers", "businesses"], # クライアント管理（情報＋書類格納＋打合せを集約）
     # ── AI業務サポート（拡張） ──
     "inbox":      ["inbox", "contracts", "customers"],                 # 返信ボックス（LINE/メール/Slack/Chatwork）
@@ -60,7 +60,7 @@ PAGE_WRITE = {
     "business": ["businesses"], "sales": ["sales", "salesdeals"], "finance": ["finance"],
     "breakeven": ["cost"], "tasks": ["tasks"], "contracts": ["contracts"], "people": ["people"],
     "tools": ["tools", "bizsheets"], "recruits": ["recruits"], "cashflow": ["cashflow", "banks", "cftxns"], "memos": ["memos"], "placements": ["placements"],
-    "workspace": ["wsclients", "wstasks", "wsnotes"], "clients": ["clients", "clientdocs", "contracts", "orders", "memos"],
+    "workspace": ["clients", "clientdocs", "contracts", "orders", "memos", "wstasks", "wsnotes"], "clients": ["clients", "clientdocs", "contracts", "orders", "memos", "wstasks", "wsnotes"],
     "dashboard": [], "analysis": [],
     "inbox": ["inbox"], "salesai": ["deals", "customers"], "docs": ["documents", "orgprofile"],
     "billing": ["documents"], "expenses": ["expenses"], "timesheets": ["timesheets"], "reminders": ["reminders"],

@@ -221,7 +221,6 @@ const PAGES = [
   {id:'contracts', icon:'📄', name:'契約管理', title:'契約管理', sub:'契約状況と更新期限のアラート', sect:'業務'},
   {id:'people', icon:'👥', name:'人材管理', title:'人材状況', sub:'人員構成・人件費・評価', sect:'業務'},
   {id:'recruits', icon:'🧑‍💼', name:'採用管理', title:'採用管理', sub:'求職者管理・5項目スコア評価・Airワーク連携', sect:'業務'},
-  {id:'memos', icon:'📝', name:'打ち合わせメモ', title:'打ち合わせメモ', sub:'商談・打ち合わせの記録。クライアント名で検索できます', sect:'業務'},
   {id:'placements', icon:'🤝', name:'人材提案管理', title:'人材提案・案件管理', sub:'候補者ごとの提案状況・リードタイム・売上・報酬・粗利を管理', sect:'業務'},
   {id:'clients', icon:'📇', name:'クライアント管理', title:'クライアント管理', sub:'クライアント別に「情報（HP・契約書・発注書・担当者）」と「打ち合わせ内容」を一元管理', sect:'業務'},
   {id:'workspace', icon:'🗂️', name:'ワークスペース', title:'クライアント・ワークスペース', sub:'クライアント別に議事録とタスクを集約。高嶋・早田で進捗を共有', sect:'業務'},
@@ -234,7 +233,7 @@ const PAGES = [
   {id:'timesheets', icon:'⏱️', name:'勤怠・工数', title:'勤怠・工数', sub:'日次の作業時間を事業・案件別に記録', sect:'AI業務サポート'},
   {id:'reminders', icon:'🔔', name:'定型リマインド', title:'定型リマインド', sub:'月次の定型業務を期日管理', sect:'AI業務サポート'},
 ];
-const PAGE_WRITE={business:['businesses'],sales:['sales','salesdeals'],finance:['finance'],breakeven:['cost'],tasks:['tasks'],contracts:['contracts'],people:['people'],tools:['tools','bizsheets'],recruits:['recruits'],cashflow:['cashflow'],memos:['memos'],placements:['placements'],workspace:['wsclients','wstasks','wsnotes'],clients:['clients','clientdocs','contracts','orders','memos'],dashboard:[],analysis:[],
+const PAGE_WRITE={business:['businesses'],sales:['sales','salesdeals'],finance:['finance'],breakeven:['cost'],tasks:['tasks'],contracts:['contracts'],people:['people'],tools:['tools','bizsheets'],recruits:['recruits'],cashflow:['cashflow'],memos:['memos'],placements:['placements'],workspace:['clients','clientdocs','contracts','orders','memos','wstasks','wsnotes'],clients:['clients','clientdocs','contracts','orders','memos','wstasks','wsnotes'],dashboard:[],analysis:[],
   inbox:['inbox'],salesai:['deals','customers'],docs:['documents','orgprofile'],billing:['documents'],expenses:['expenses'],timesheets:['timesheets'],reminders:['reminders']};
 const PAGE_NAME=Object.fromEntries(PAGES.map(p=>[p.id,p.name]));
 
@@ -400,7 +399,7 @@ function breakeven(){ const {fixedMonthly,variableRate}=STORE.cost||{fixedMonthl
 function render(){
   markNav();
   const c=document.getElementById('content');
-  const map={dashboard:renderDashboard,analysis:renderAnalysis,breakeven:renderBreakeven,business:renderBusiness,tools:renderTools,recruits:renderRecruits,memos:renderMemos,placements:renderPlacements,workspace:renderWorkspace,clients:renderClients,
+  const map={dashboard:renderDashboard,analysis:renderAnalysis,breakeven:renderBreakeven,business:renderBusiness,tools:renderTools,recruits:renderRecruits,placements:renderPlacements,workspace:renderWorkspace,clients:renderClients,
     sales:renderSales,finance:renderFinance,cashflow:renderCashflow,tasks:renderTasks,contracts:renderContracts,people:renderPeople,users:renderUsers,
     inbox:renderInbox,salesai:renderSalesai,docs:renderDocs,billing:renderBilling,expenses:renderExpenses,timesheets:renderTimesheets,reminders:renderReminders};
   const p=PAGES.find(x=>x.id===current);
@@ -2050,8 +2049,9 @@ function editMemo(id, presetClient){
 // クライアント・ワークスペース（Notion風・議事録＋タスクを進捗共有）
 //==================================================================
 let wsClient=null;      // 選択中クライアント名
-let wsTab='tasks';      // 'tasks' | 'notes'
+let wsTab='tasks';      // 'tasks' | 'meet'
 let wsAssignee='all';   // 担当者フィルタ
+let wsQuery='';         // クライアント検索
 const WS_STATUS=[
   {k:'未着手', cls:'ws-todo',  dot:'#94a3b8'},
   {k:'進行中', cls:'ws-doing', dot:'#3b82f6'},
@@ -2059,14 +2059,17 @@ const WS_STATUS=[
   {k:'完了',   cls:'ws-done',  dot:'#10b981'},
 ];
 const WS_PRIO={'高':'#ef4444','中':'#f59e0b','低':'#94a3b8'};
-function wsClientsAll(){ return (STORE.wsclients||[]).filter(c=>!c.archived); }
+// ワークスペースは「クライアント管理」と同じ clients を使用（打合せ=memos／進捗=wstasks）
+function wsClientsAll(){ return (STORE.clients||[]).slice().sort((a,b)=>(a.name||'').localeCompare(b.name||'','ja')); }
+function wsClientColor(cl){ return (typeof clStatusColor==='function'&&cl)?clStatusColor(cl.status):'#6366f1'; }
 function wsMembers(){
   const set=new Set(['高嶋','早田']);
-  (STORE.wsclients||[]).forEach(c=>{ if(c.owner) set.add(c.owner); });
+  (STORE.clients||[]).forEach(c=>{ if(c.owner) set.add(c.owner); });
   (STORE.wstasks||[]).forEach(t=>{ if(t.assignee) set.add(t.assignee); });
   return [...set];
 }
 function wsTasksOf(client){ return (STORE.wstasks||[]).filter(t=>t.client===client); }
+function wsMeetsOf(client){ return (STORE.memos||[]).filter(m=>m.client===client); }
 function wsProgress(client){
   const ts=wsTasksOf(client); const done=ts.filter(t=>t.status==='完了').length;
   return {total:ts.length, done, pct:ts.length?Math.round(done/ts.length*100):0};
@@ -2077,44 +2080,28 @@ function wsMemberChip(name){
   return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:${col}">
     <span style="width:16px;height:16px;border-radius:50%;background:${col};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:9px">${escapeHtml(name.slice(0,1))}</span>${escapeHtml(name)}</span>`;
 }
+function wsTagChips(cl){ return (cl.tags||[]).slice(0,5).map(t=>`<span class="pill muted" style="font-size:10px">#${escapeHtml(t)}</span>`).join(' '); }
 function renderWorkspace(c,p){
   const ed=canEdit('workspace');
   const clients=wsClientsAll();
   if(clients.length && (!wsClient || !clients.find(x=>x.name===wsClient))) wsClient=clients[0].name;
-  setHeader(p.title,p.sub, ed?`<button class="btn ghost" onclick="editWsNote()">＋ 議事録</button><button class="btn" onclick="editWsTask()">＋ タスク</button>`:roBadge());
+  setHeader(p.title,p.sub, ed?`<button class="btn ghost" onclick="editMemo(null, wsClient||'')">＋ 打ち合わせ</button><button class="btn" onclick="editWsTask()">＋ タスク</button>`:roBadge());
   if(!clients.length){
-    c.innerHTML=`<div class="card"><div class="empty">クライアントがまだありません。<br>${ed?'右下の「＋ クライアント」から追加してください。':'管理者がクライアントを追加すると表示されます。'}</div>
-      ${ed?`<div style="margin-top:14px;text-align:center"><button class="btn" onclick="editWsClient()">＋ クライアントを追加</button></div>`:''}</div>`;
+    c.innerHTML=`<div class="card"><div class="empty">クライアントがまだありません。<br>${ed?'「クライアント管理」または下のボタンから追加してください。':'管理者がクライアントを追加すると表示されます。'}</div>
+      ${ed?`<div style="margin-top:14px;text-align:center"><button class="btn" onclick="editClient()">＋ クライアントを追加</button></div>`:''}</div>`;
     return;
   }
-  // 左：クライアント一覧（進捗つき）
-  const clientList=clients.map(cl=>{
-    const pr=wsProgress(cl.name); const active=cl.name===wsClient;
-    const notes=(STORE.wsnotes||[]).filter(n=>n.client===cl.name).length;
-    return `<div onclick="wsClient='${escapeAttr(cl.name)}';render()" style="cursor:pointer;padding:11px 12px;border-radius:10px;margin-bottom:6px;border:1px solid ${active?'var(--accent)':'var(--line)'};background:${active?'color-mix(in srgb,var(--accent) 12%,transparent)':'var(--panel)'}">
-      <div style="display:flex;align-items:center;gap:8px;justify-content:space-between">
-        <span style="display:flex;align-items:center;gap:8px;min-width:0">
-          <span style="width:10px;height:10px;border-radius:3px;background:${cl.color||'#6366f1'};flex:none"></span>
-          <b style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(cl.name)}</b>
-        </span>
-        <span class="muted" style="font-size:11px;flex:none">${pr.done}/${pr.total}</span>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-top:7px">
-        <div style="flex:1;height:5px;border-radius:3px;background:var(--line);overflow:hidden"><div style="height:100%;width:${pr.pct}%;background:${pr.pct===100?'#10b981':'var(--accent)'}"></div></div>
-        <span class="muted" style="font-size:10px">${pr.pct}%</span>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">${wsMemberChip(cl.owner)}<span class="muted" style="font-size:10px">📋 議事録 ${notes}</span></div>
-    </div>`;
-  }).join('');
   c.innerHTML=`
     <div class="ws-grid">
       <div class="ws-side">
         <div class="card" style="padding:12px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
             <h3 style="margin:0;font-size:13px">クライアント <span class="pill muted">${clients.length}</span></h3>
-            ${ed?`<button class="btn ghost sm" onclick="editWsClient()">＋</button>`:''}
+            ${ed?`<button class="btn ghost sm" onclick="editClient()">＋</button>`:''}
           </div>
-          ${clientList}
+          <input id="ws-q" placeholder="🔎 クライアント・タグで検索…" value="${escapeHtml(wsQuery)}" oninput="wsQuery=this.value;wsRenderList()"
+            style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--line);color:var(--txt);padding:7px 10px;border-radius:8px;font-size:12px;margin-bottom:10px">
+          <div id="ws-listbox"></div>
         </div>
       </div>
       <div class="ws-main"><div id="ws-detail"></div></div>
@@ -2129,7 +2116,32 @@ function renderWorkspace(c,p){
       .ws-tab{padding:7px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;border:1px solid var(--line);background:var(--panel);color:var(--muted)}
       .ws-tab.on{background:var(--accent);color:#fff;border-color:var(--accent)}
     </style>`;
-  wsRenderDetail();
+  wsRenderList(); wsRenderDetail();
+}
+function wsRenderList(){
+  const box=document.getElementById('ws-listbox'); if(!box) return;
+  let clients=wsClientsAll();
+  const q=wsQuery.trim().toLowerCase();
+  if(q) clients=clients.filter(cl=>((cl.name||'')+' '+(cl.kana||'')+' '+((cl.tags||[]).join(' '))+' '+(cl.owner||'')+' '+(cl.status||'')).toLowerCase().includes(q));
+  box.innerHTML=clients.map(cl=>{
+    const pr=wsProgress(cl.name); const active=cl.name===wsClient;
+    const meets=wsMeetsOf(cl.name).length;
+    return `<div onclick="wsClient='${escapeAttr(cl.name)}';wsRenderList();wsRenderDetail()" style="cursor:pointer;padding:11px 12px;border-radius:10px;margin-bottom:6px;border:1px solid ${active?'var(--accent)':'var(--line)'};background:${active?'color-mix(in srgb,var(--accent) 12%,transparent)':'var(--panel)'}">
+      <div style="display:flex;align-items:center;gap:8px;justify-content:space-between">
+        <span style="display:flex;align-items:center;gap:8px;min-width:0">
+          <span style="width:10px;height:10px;border-radius:3px;background:${wsClientColor(cl)};flex:none"></span>
+          <b style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(cl.name)}</b>
+        </span>
+        <span class="muted" style="font-size:11px;flex:none">${pr.done}/${pr.total}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:7px">
+        <div style="flex:1;height:5px;border-radius:3px;background:var(--line);overflow:hidden"><div style="height:100%;width:${pr.pct}%;background:${pr.pct===100?'#10b981':'var(--accent)'}"></div></div>
+        <span class="muted" style="font-size:10px">${pr.pct}%</span>
+      </div>
+      ${(cl.tags||[]).length?`<div style="margin-top:6px">${wsTagChips(cl)}</div>`:''}
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">${wsMemberChip(cl.owner)}<span class="muted" style="font-size:10px">🗒️ 打合せ ${meets}</span></div>
+    </div>`;
+  }).join('')||`<div class="empty" style="font-size:12px">該当なし</div>`;
 }
 function wsRenderDetail(){
   const el=document.getElementById('ws-detail'); if(!el) return;
@@ -2139,6 +2151,7 @@ function wsRenderDetail(){
   const counts={}; WS_STATUS.forEach(s=>counts[s.k]=0);
   wsTasksOf(cl.name).forEach(t=>{ if(counts[t.status]!==undefined) counts[t.status]++; });
   const overdue=wsTasksOf(cl.name).filter(t=>t.status!=='完了'&&t.due&&t.due<todayISO()).length;
+  const meetN=wsMeetsOf(cl.name).length;
   const stat=(label,val,col)=>`<div style="flex:1;min-width:80px;background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:10px 12px">
     <div class="muted" style="font-size:11px">${label}</div><div style="font-size:20px;font-weight:700;color:${col||'var(--txt)'}">${val}</div></div>`;
   const members=wsMembers();
@@ -2148,11 +2161,13 @@ function wsRenderDetail(){
     ${members.map(m=>`<button class="btn ghost sm" style="${wsAssignee===m?'background:var(--accent);color:#fff':''}" onclick="wsAssignee='${escapeAttr(m)}';wsRenderDetail()">${escapeHtml(m)}</button>`).join('')}</div>`;
   el.innerHTML=`
     <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-        <h3 style="margin:0;display:flex;align-items:center;gap:9px"><span style="width:12px;height:12px;border-radius:4px;background:${cl.color||'#6366f1'}"></span>${escapeHtml(cl.name)}
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px">
+        <h3 style="margin:0;display:flex;align-items:center;gap:9px;flex-wrap:wrap"><span style="width:12px;height:12px;border-radius:4px;background:${wsClientColor(cl)}"></span>${escapeHtml(cl.name)}
+          ${typeof clStatusPill==='function'?clStatusPill(cl.status):''}
           <span class="muted" style="font-size:12px;font-weight:400">担当 ${escapeHtml(cl.owner||'—')}</span></h3>
-        ${ed?`<span><button class="btn ghost sm" onclick="editWsClient('${cl.id}')">✏️ 編集</button></span>`:''}
+        ${ed?`<span style="display:flex;gap:6px"><button class="btn ghost sm" onclick="editClient('${cl.id}')">✏️ 情報編集</button><button class="btn ghost sm" style="color:#ef4444" onclick="delClient('${cl.id}')">🗑 削除</button></span>`:''}
       </div>
+      ${(cl.tags||[]).length?`<div style="margin-top:8px">${(cl.tags||[]).map(t=>`<span class="pill muted" style="font-size:11px">#${escapeHtml(t)}</span>`).join(' ')}</div>`:''}
       ${cl.note?`<p class="muted" style="font-size:12px;margin:8px 0 0">${escapeHtml(cl.note)}</p>`:''}
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
         ${stat('進捗', pr.pct+'%', pr.pct===100?'#10b981':'var(--accent)')}
@@ -2166,14 +2181,32 @@ function wsRenderDetail(){
     <div class="card">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px">
         <div style="display:flex;gap:8px">
-          <div class="ws-tab ${wsTab==='tasks'?'on':''}" onclick="wsTab='tasks';wsRenderDetail()">✅ タスク</div>
-          <div class="ws-tab ${wsTab==='notes'?'on':''}" onclick="wsTab='notes';wsRenderDetail()">📋 議事録</div>
+          <div class="ws-tab ${wsTab==='tasks'?'on':''}" onclick="wsTab='tasks';wsRenderDetail()">✅ タスク（進捗）</div>
+          <div class="ws-tab ${wsTab==='meet'?'on':''}" onclick="wsTab='meet';wsRenderDetail()">🗒️ 打ち合わせ <span class="pill muted">${meetN}</span></div>
         </div>
-        ${wsTab==='tasks'?asgFilter:(ed?`<button class="btn sm" onclick="editWsNote(null,'${escapeAttr(cl.name)}')">＋ 議事録を追加</button>`:'')}
+        ${wsTab==='tasks'?asgFilter:(ed?`<button class="btn sm" onclick="editMemo(null,'${escapeAttr(cl.name)}')">＋ 打ち合わせを追加</button>`:'')}
       </div>
       <div id="ws-tabbody"></div>
     </div>`;
-  if(wsTab==='tasks') wsRenderTasks(cl.name); else wsRenderNotes(cl.name);
+  if(wsTab==='tasks') wsRenderTasks(cl.name); else wsRenderMeets(cl.name);
+}
+function wsRenderMeets(client){
+  const el=document.getElementById('ws-tabbody'); if(!el) return;
+  const ed=canEdit('workspace');
+  const meets=wsMeetsOf(client).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  el.innerHTML=meets.map(m=>{
+    const content=m.content!==undefined?m.content:(m.body||'');
+    return `<div class="ws-card">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        <div style="min-width:0"><b style="font-size:13px">${escapeHtml(m.title||'打ち合わせ')}</b> <span class="muted" style="font-size:11px">📅 ${m.date||''}</span>${m.via?` <span class="pill muted" style="font-size:10px">${escapeHtml(m.via)}</span>`:''}</div>
+        ${ed?`<span class="row-actions" style="flex:none"><button class="icon-btn" onclick="editMemo('${m.id}','${escapeAttr(client)}')">✏️</button><button class="icon-btn" onclick="del('memos','${m.id}').then(wsRenderDetail)">🗑</button></span>`:''}
+      </div>
+      ${m.attendees?`<div class="muted" style="font-size:11px;margin-top:4px">👥 ${escapeHtml(m.attendees)}</div>`:''}
+      ${content?`<div style="font-size:12px;margin-top:6px;line-height:1.6;white-space:pre-wrap;max-height:84px;overflow:hidden">${escapeHtml(content)}</div>`:''}
+      ${m.nextAction?`<div style="font-size:11px;margin-top:5px"><span class="muted">次回:</span> ${escapeHtml(m.nextAction)}</div>`:''}
+      ${m.minutesUrl?`<div style="margin-top:6px"><a href="${escapeHtml(m.minutesUrl)}" target="_blank" rel="noopener" style="color:var(--accent);font-size:11px;text-decoration:none">📋 議事録ツールを開く ↗</a></div>`:''}
+    </div>`;
+  }).join('')||`<div class="empty">打ち合わせ記録がまだありません。${ed?'「＋ 打ち合わせを追加」から記録してください。':''}</div>`;
 }
 function wsRenderTasks(client){
   const el=document.getElementById('ws-tabbody'); if(!el) return;
@@ -2207,63 +2240,6 @@ function wsRenderTasks(client){
   }).join('');
   el.innerHTML=`<div class="ws-cols">${cols}</div>`;
 }
-function wsRenderNotes(client){
-  const el=document.getElementById('ws-tabbody'); if(!el) return;
-  const ed=canEdit('workspace');
-  const notes=(STORE.wsnotes||[]).filter(n=>n.client===client).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  el.innerHTML=notes.map(n=>`<div class="ws-card" style="cursor:pointer" onclick="showWsNote('${n.id}')">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <b style="font-size:13px">${escapeHtml(n.title||'議事録')}</b>
-      <span class="muted" style="font-size:11px;flex:none">${n.date||''}</span>
-    </div>
-    ${n.attendees?`<div class="muted" style="font-size:11px;margin-top:3px">👥 ${escapeHtml(n.attendees)}</div>`:''}
-    ${n.body?`<div class="muted" style="font-size:12px;margin-top:6px;white-space:pre-wrap;max-height:52px;overflow:hidden">${escapeHtml(n.body)}</div>`:''}
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
-      ${n.url?`<a href="${escapeHtml(n.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--accent);font-size:11px;text-decoration:none">🔗 議事録ツールを開く</a>`:'<span></span>'}
-      ${ed?`<span class="row-actions" onclick="event.stopPropagation()"><button class="icon-btn" onclick="editWsNote('${n.id}')">✏️</button><button class="icon-btn" onclick="del('wsnotes','${n.id}').then(wsRenderDetail)">🗑</button></span>`:''}
-    </div>
-  </div>`).join('')||`<div class="empty">議事録がまだありません。${ed?'「＋ 議事録を追加」から記録してください。':''}</div>`;
-}
-function showWsNote(id){
-  const n=(STORE.wsnotes||[]).find(z=>z.id===id); if(!n) return;
-  const ed=canEdit('workspace');
-  const kv=(k,v)=>`<div class="stat-line"><span class="muted">${k}</span><b>${v}</b></div>`;
-  openModal(escapeHtml(n.title||'議事録'),`
-    ${kv('クライアント', escapeHtml(n.client||'—'))}
-    ${kv('日付', n.date||'—')}
-    ${kv('参加者', escapeHtml(n.attendees||'—'))}
-    ${n.url?kv('議事録', `<a href="${escapeHtml(n.url)}" target="_blank" rel="noopener" style="color:var(--accent)">🔗 開く ↗</a>`):''}
-    <div style="margin-top:12px"><div class="muted" style="font-size:12px;margin-bottom:4px">内容</div>
-      <div style="font-size:13px;line-height:1.8;white-space:pre-wrap;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px">${escapeHtml(n.body||'')}</div></div>`,
-    ed?()=>{ closeModal(); editWsNote(id); }:null);
-  const sv=document.getElementById('modal-save');
-  if(ed){ sv.textContent='✏️ 編集する'; sv.style.display=''; } else sv.style.display='none';
-}
-function editWsClient(id){
-  const x=(STORE.wsclients||[]).find(z=>z.id===id)||{name:'',owner:'高嶋',color:'#6366f1',note:'',archived:false};
-  const members=wsMembers();
-  const colors=['#6366f1','#10b981','#f59e0b','#ef4444','#0ea5e9','#8b5cf6','#ec4899','#64748b'];
-  openModal(id?'クライアントを編集':'クライアントを追加',`
-    ${field('クライアント名','wc_name',escapeHtml(x.name||''),'text')}
-    <div class="field"><label>担当（オーナー）</label>
-      <input id="wc_owner" list="wc-mem" value="${escapeHtml(x.owner||'')}" placeholder="高嶋 / 早田">
-      <datalist id="wc-mem">${members.map(m=>`<option value="${escapeHtml(m)}">`).join('')}</datalist></div>
-    <div class="field"><label>カラー</label>
-      <select id="wc_color">${colors.map(cc=>`<option value="${cc}"${cc===x.color?' selected':''}>${cc}</option>`).join('')}</select></div>
-    <div class="field"><label>メモ</label><textarea id="wc_note" rows="2" placeholder="案件概要・注意点など">${escapeHtml(x.note||'')}</textarea></div>
-    ${id?`<label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-top:4px"><input type="checkbox" id="wc_arch"${x.archived?' checked':''}> アーカイブする（一覧から隠す）</label>`:''}`,
-    ()=>{ const nm=fv('wc_name').trim(); if(!nm) throw new Error('クライアント名を入力してください');
-      const oldName=x.name;
-      const arch=document.getElementById('wc_arch')?document.getElementById('wc_arch').checked:false;
-      const r=upsert('wsclients',{id:id||b(),name:nm,owner:fv('wc_owner').trim(),color:fv('wc_color'),note:fv('wc_note'),archived:arch},id);
-      // クライアント名を変更したら、紐づくタスク・議事録の client も追従
-      if(id && oldName && oldName!==nm){
-        (STORE.wstasks||[]).forEach(t=>{ if(t.client===oldName){ t.client=nm; upsert('wstasks',t,t.id); }});
-        (STORE.wsnotes||[]).forEach(t=>{ if(t.client===oldName){ t.client=nm; upsert('wsnotes',t,t.id); }});
-        if(wsClient===oldName) wsClient=nm;
-      } else { wsClient=nm; }
-      return r; });
-}
 function editWsTask(id, presetClient, presetStatus){
   const x=(STORE.wstasks||[]).find(z=>z.id===id)||{client:presetClient||wsClient||'',title:'',assignee:'高嶋',status:presetStatus||'未着手',due:'',priority:'中',note:''};
   const clients=wsClientsAll().map(c=>c.name); if(x.client&&!clients.includes(x.client)) clients.unshift(x.client);
@@ -2282,22 +2258,6 @@ function editWsTask(id, presetClient, presetStatus){
       wsClient=fv('wt_client');
       return upsert('wstasks',{id:id||b(),client:fv('wt_client'),title:t,assignee:fv('wt_asg'),
         status:fv('wt_status'),due:fv('wt_due'),priority:fv('wt_prio'),note:fv('wt_note'),updated:Date.now()},id); });
-}
-function editWsNote(id, presetClient){
-  const x=(STORE.wsnotes||[]).find(z=>z.id===id)||{client:presetClient||wsClient||'',date:todayISO(),title:'',attendees:'',body:'',url:''};
-  const clients=wsClientsAll().map(c=>c.name); if(x.client&&!clients.includes(x.client)) clients.unshift(x.client);
-  openModal(id?'議事録を編集':'議事録を追加',`
-    <div class="field two"><label>クライアント / 日付</label>
-      <select id="wn_client">${clients.map(o=>`<option${o===x.client?' selected':''}>${escapeHtml(o)}</option>`).join('')}</select>
-      <input id="wn_date" type="date" value="${x.date||todayISO()}"></div>
-    ${field('タイトル','wn_title',escapeHtml(x.title||''),'text')}
-    ${field('参加者','wn_att',escapeHtml(x.attendees||''),'text')}
-    <div class="field"><label>内容（議事メモ）</label><textarea id="wn_body" rows="6" placeholder="・決定事項\n・共有事項\n・ネクストアクション">${escapeHtml(x.body||'')}</textarea></div>
-    <div class="field"><label>議事録ツールURL（Frictio等）</label><input id="wn_url" type="url" value="${escapeHtml(x.url||'')}" placeholder="https://app.frictio.ai/ws/..."></div>`,
-    ()=>{ if(!fv('wn_title').trim()&&!fv('wn_body').trim()) throw new Error('タイトルか内容を入力してください');
-      wsClient=fv('wn_client');
-      return upsert('wsnotes',{id:id||b(),client:fv('wn_client'),date:fv('wn_date'),title:fv('wn_title').trim(),
-        attendees:fv('wn_att').trim(),body:fv('wn_body'),url:fv('wn_url').trim(),updated:Date.now()},id); });
 }
 
 //==================================================================
@@ -2393,7 +2353,7 @@ function clRenderInfo(){
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
       <div style="min-width:0"><h3 style="margin:0;overflow:hidden;text-overflow:ellipsis">${escapeHtml(x.name)}</h3>
         <div style="margin-top:5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">${clStatusPill(x.status)}<span class="muted" style="font-size:11px">${escapeHtml(x.biz||'')}</span></div></div>
-      ${ed?`<button class="icon-btn" title="クライアント情報を編集" onclick="editClient('${x.id}')">✏️</button>`:''}
+      ${ed?`<span style="display:flex;gap:2px;flex:none"><button class="icon-btn" title="クライアント情報を編集" onclick="editClient('${x.id}')">✏️</button><button class="icon-btn" title="クライアントを削除" onclick="delClient('${x.id}')">🗑</button></span>`:''}
     </div>
     <div class="cl-doc" style="margin-top:12px">
       <div class="muted" style="font-size:11px">HP</div>
@@ -2506,6 +2466,30 @@ function editClient(id){
         tel:fv('cl_tel').trim(),email:fv('cl_email').trim(),address:fv('cl_addr').trim(),website:fv('cl_web').trim(),
         status:fv('cl_status'),biz:fv('cl_biz'),owner:fv('cl_owner').trim(),source:fv('cl_source').trim(),
         amount:fnum('cl_amt'),nextDate:fv('cl_ndate'),nextAction:fv('cl_naction').trim(),tags,note:fv('cl_note'),updated:Date.now()},id); });
+}
+async function delClient(id){
+  const cl=(STORE.clients||[]).find(x=>x.id===id); if(!cl) return;
+  const name=cl.name;
+  const c={ memos:(STORE.memos||[]).filter(m=>m.client===name).length,
+    tasks:(STORE.wstasks||[]).filter(t=>t.client===name).length,
+    docs:(STORE.clientdocs||[]).filter(d=>d.client===name).length,
+    contracts:(STORE.contracts||[]).filter(x=>x.client===name).length,
+    orders:(STORE.orders||[]).filter(o=>o.client===name).length };
+  if(!confirm(`クライアント「${name}」を削除します。\n\n紐づく次のデータも一緒に削除されます：\n・打ち合わせ ${c.memos}件\n・タスク ${c.tasks}件\n・書類 ${c.docs}件\n・契約 ${c.contracts}件\n・発注書 ${c.orders}件\n\nこの操作は元に戻せません。よろしいですか？`)) return;
+  try{
+    await loadStore();  // 最新を取得してから削除
+    const cut=async(coll,keep)=>{ const before=STORE[coll]||[]; const after=before.filter(keep); if(after.length!==before.length){ STORE[coll]=after; await persist(coll); } };
+    await cut('memos',x=>x.client!==name);
+    await cut('wstasks',x=>x.client!==name);
+    await cut('wsnotes',x=>x.client!==name);
+    await cut('clientdocs',x=>x.client!==name);
+    await cut('contracts',x=>x.client!==name);
+    await cut('orders',x=>x.client!==name);
+    STORE.clients=(STORE.clients||[]).filter(x=>x.id!==id); await persist('clients');
+    if(typeof wsClient!=='undefined' && wsClient===name) wsClient=null;
+    if(typeof clientSel!=='undefined' && clientSel===id) clientSel=null;
+    toast('クライアントを削除しました'); render();
+  }catch(e){ alert('削除に失敗しました:\n'+e.message); }
 }
 
 // ---- パスワード変更（本人） ----

@@ -1595,6 +1595,7 @@ const SCORE_AXES=[
   {key:'communication', label:'コミュニケーション',color:'#a78bfa'},
 ];
 let recFilter={q:'',source:'all',stage:'all',sort:'score'};
+let recView='list';   // 'list' | 'analysis'
 
 function recHasScore(r){ return r.scores && SCORE_AXES.some(a=>Number(r.scores[a.key])>0); }
 function recAvg(r){ if(!recHasScore(r)) return null; return SCORE_AXES.reduce((s,a)=>s+Number((r.scores||{})[a.key]||0),0)/SCORE_AXES.length; }
@@ -1629,9 +1630,13 @@ function radarSVG(scores,size=210,max=5){
 
 function recRender(){
   const ed=canEdit('recruits');
+  const viewToggle=`<span style="display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-right:8px">
+    <button class="btn ghost sm" style="border:0;border-radius:0;${recView==='list'?'background:var(--accent);color:#fff':''}" onclick="recView='list';recRender()">📋 一覧</button>
+    <button class="btn ghost sm" style="border:0;border-radius:0;${recView==='analysis'?'background:var(--accent);color:#fff':''}" onclick="recView='analysis';recRender()">📊 分析</button></span>`;
   setHeader('採用管理','求職者管理・5項目スコア評価・Airワーク連携',
-    ed?`<button class="btn ghost sm" onclick="recruitIntegration()">🔗 Airワーク/CSV</button><button class="btn" onclick="editRecruit()">＋ 候補者を追加</button>`
-      :`<button class="btn ghost sm" onclick="recruitIntegration()">🔗 CSV書き出し</button>${roBadge()}`);
+    ed?`${viewToggle}<button class="btn ghost sm" onclick="recruitIntegration()">🔗 Airワーク/CSV</button><button class="btn" onclick="editRecruit()">＋ 候補者を追加</button>`
+      :`${viewToggle}<button class="btn ghost sm" onclick="recruitIntegration()">🔗 CSV書き出し</button>${roBadge()}`);
+  if(recView==='analysis'){ return recRenderAnalysis(document.getElementById('content')); }
   const rs=STORE.recruits||[];
   const cnt=s=>rs.filter(r=>r.stage===s).length;
   const active=rs.filter(r=>!['入社','見送り'].includes(r.stage)).length;
@@ -1679,6 +1684,67 @@ function recRender(){
   recFillRows();
 }
 
+function recRenderAnalysis(c){
+  const rs=STORE.recruits||[];
+  const isHired=r=>['内定','入社'].includes(r.stage);
+  const total=rs.length;
+  const hired=rs.filter(isHired).length;
+  const rejected=rs.filter(r=>r.stage==='見送り').length;
+  const decided=hired+rejected;
+  const rate=total?Math.round(hired/total*100):0;
+  const ages=rs.map(r=>Number(r.age)).filter(a=>a>0&&a<120);
+  const avgAge=ages.length?Math.round(ages.reduce((a,b)=>a+b,0)/ages.length):null;
+  // 月別
+  const mMap={}; rs.forEach(r=>{ const m=(r.applied||'').slice(0,7); if(!/^\d{4}-\d{2}$/.test(m))return; (mMap[m]=mMap[m]||{t:0,h:0}); mMap[m].t++; if(isHired(r))mMap[m].h++; });
+  const months=Object.keys(mMap).sort();
+  // 経由別・事業別
+  const grp=key=>{ const o={}; rs.forEach(r=>{ const k=(r[key]||'（未設定）').trim()||'（未設定）'; (o[k]=o[k]||{t:0,h:0}); o[k].t++; if(isHired(r))o[k].h++; }); return Object.entries(o).sort((a,b)=>b[1].t-a[1].t); };
+  const bySource=grp('source'), byBiz=grp('position');
+  // 年齢分布
+  const buckets=[['〜24',a=>a<25],['25–29',a=>a>=25&&a<30],['30–39',a=>a>=30&&a<40],['40–49',a=>a>=40&&a<50],['50〜',a=>a>=50]];
+  const ageDist=buckets.map(([lb,f])=>({label:lb,v:ages.filter(f).length}));
+  // 選考状況
+  const stageColors={'応募':'#94a3b8','書類選考':'#60a5fa','面接':'#f59e0b','内定':'#10b981','入社':'#059669','見送り':'#ef4444'};
+  const stageCounts=RECRUIT_STAGES.map(s=>({label:s,v:rs.filter(r=>r.stage===s).length,color:stageColors[s]||'#64748b'}));
+  const maxSrc=Math.max(...bySource.map(x=>x[1].t),1);
+  const maxBiz=Math.max(...byBiz.map(x=>x[1].t),1);
+  const maxStage=Math.max(...stageCounts.map(x=>x.v),1);
+  const rateRow=(label,o,mx)=>{ const r=o.t?Math.round(o.h/o.t*100):0;
+    return `<div style="margin-bottom:11px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span><b>${escapeHtml(label)}</b></span><span class="muted">面談 ${o.t} ／ 採用 ${o.h}　<b style="color:#10b981">${r}%</b></span></div>
+      <div style="position:relative;height:9px;background:var(--line);border-radius:5px;overflow:hidden">
+        <div style="position:absolute;inset:0;width:${o.t/mx*100}%;background:color-mix(in srgb,var(--accent) 30%,transparent)"></div>
+        <div style="position:absolute;left:0;top:0;bottom:0;width:${o.h/mx*100}%;background:#10b981"></div>
+      </div></div>`; };
+  c.innerHTML=`
+    <div class="grid kpis">
+      ${kpi('面談総数','🧑‍💼',total,'')}
+      ${kpi('採用（内定+入社）','🎉',hired,'')}
+      ${kpi('採用率','📈',rate+'%',`<span class="muted">採用${hired} / 面談${total}</span>`)}
+      ${kpi('平均年齢','🎂',avgAge!=null?avgAge+'歳':'—',`<span class="muted">${ages.length}名で集計</span>`)}
+    </div><div style="height:16px"></div>
+    <div class="card" style="margin-bottom:16px"><h3>📅 月別 面談数（<span style="color:#10b981">緑=採用</span>）</h3>
+      ${months.length?`<div class="bars" style="margin-top:8px">${months.map(m=>{const o=mMap[m];const mx=Math.max(...months.map(x=>mMap[x].t),1);const mm=m.slice(5)+'月';
+        return `<div class="bar" title="${m}: 面談${o.t} / 採用${o.h}"><div style="position:relative;width:100%;height:100px;display:flex;align-items:flex-end">
+          <div style="width:100%;background:color-mix(in srgb,var(--accent) 30%,transparent);height:${Math.max(o.t/mx*100,2)}%;border-radius:4px 4px 0 0;position:relative">
+          <div style="position:absolute;bottom:0;left:0;right:0;background:#10b981;height:${o.t?o.h/o.t*100:0}%;border-radius:0 0 4px 4px"></div></div>
+        </div><small>${mm}</small><small style="color:var(--muted)">${o.t}</small></div>`;}).join('')}</div>`:'<div class="muted">面談日データがありません</div>'}
+    </div>
+    <div class="two-col">
+      <div class="card"><h3>🔗 経由別 面談数・採用率</h3>${bySource.map(([k,o])=>rateRow(k,o,maxSrc)).join('')||'<div class="muted">データなし</div>'}</div>
+      <div class="card"><h3>🏢 事業別 面談数・採用率</h3>${byBiz.map(([k,o])=>rateRow(k,o,maxBiz)).join('')||'<div class="muted">データなし</div>'}</div>
+    </div><div style="height:16px"></div>
+    <div class="two-col">
+      <div class="card"><h3>🎯 選考状況の内訳</h3>${stageCounts.map(s=>`
+        <div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span><i style="display:inline-block;width:9px;height:9px;border-radius:3px;background:${s.color};margin-right:6px"></i>${s.label}</span><b>${s.v}名</b></div>
+        <div class="progress"><i style="width:${s.v/maxStage*100}%;background:${s.color}"></i></div></div>`).join('')}
+        <div class="stat-line" style="margin-top:10px"><span class="muted">結果が出た数（採用+見送り）</span><b>${decided} / ${total}</b></div>
+      </div>
+      <div class="card"><h3>🎂 年齢分布 <span class="muted" style="font-weight:400;font-size:11px">記載 ${ages.length}名</span></h3>
+        ${ages.length?barChart(ageDist,{fmt:v=>v+'名'}):'<div class="muted">年齢データがありません</div>'}
+      </div>
+    </div>`;
+}
 function recFilteredList(){
   let list=(STORE.recruits||[]).filter(r=>{
     if(recFilter.stage!=='all' && r.stage!==recFilter.stage) return false;

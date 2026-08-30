@@ -11,7 +11,7 @@ Mac/Linux標準のPython3だけで動作（追加ライブラリ不要）。
 初期管理者アカウント:  ID = admin  /  パスワード = admin123
 ※ 初回ログイン後、必ずパスワードを変更してください。
 """
-import json, os, hashlib, hmac, secrets, threading, time, socket, sys, datetime, io, zipfile, html
+import json, os, hashlib, hmac, secrets, threading, time, socket, sys, datetime, io, zipfile, html, base64
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, urlencode
 from urllib.request import Request, urlopen
@@ -21,6 +21,8 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # DATA_DIR は環境変数で上書き可（クラウドの永続ディスクを指定するため）
 DATA_DIR = os.environ.get("DATA_DIR", os.path.join(BASE_DIR, "data"))
 DB_PATH = os.path.join(DATA_DIR, "db.json")
+UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")   # 契約書等のファイル格納（永続ディスク）
+MAX_UPLOAD = 15 * 1024 * 1024                     # 1ファイル最大15MB
 APP_HTML = os.path.join(BASE_DIR, "app.html")
 PORT = int(os.environ.get("PORT", "8000"))
 SESSION_TTL = 60 * 60 * 24 * 14  # 14日
@@ -37,13 +39,13 @@ PAGE_COLLECTIONS = {
     "tasks":     ["tasks", "businesses"],
     "contracts": ["contracts"],
     "people":    ["people", "businesses"],
-    "tools":     ["tools"],
+    "tools":     ["tools", "bizsheets", "businesses"],
     "recruits":  ["recruits"],
     "cashflow":  ["cashflow", "banks", "cftxns"],   # 資金繰り（設定・口座マスタ・入出金明細）
     "memos":     ["memos", "contracts"],            # 打ち合わせメモ（クライアント検索で契約情報も参照）
     "placements":["placements", "businesses"],      # 人材提案・案件管理（BPO等・売上/報酬/粗利）
     "workspace": ["wsclients", "wstasks", "wsnotes"], # クライアント別ワークスペース（議事録＋タスク・進捗共有）
-    "clients":   ["clients", "contracts", "orders", "memos", "wstasks", "wsnotes", "deals", "documents", "placements", "customers", "businesses"], # クライアント管理（情報＋契約書＋発注書＋打合せを集約）
+    "clients":   ["clients", "clientdocs", "contracts", "orders", "memos", "wstasks", "wsnotes", "deals", "documents", "placements", "customers", "businesses"], # クライアント管理（情報＋書類格納＋打合せを集約）
     # ── AI業務サポート（拡張） ──
     "inbox":      ["inbox", "contracts", "customers"],                 # 返信ボックス（LINE/メール/Slack/Chatwork）
     "salesai":    ["deals", "customers", "contracts", "memos"],        # 営業サポート（商談・顧客・AI提案）
@@ -57,8 +59,8 @@ PAGE_COLLECTIONS = {
 PAGE_WRITE = {
     "business": ["businesses"], "sales": ["sales", "salesdeals"], "finance": ["finance"],
     "breakeven": ["cost"], "tasks": ["tasks"], "contracts": ["contracts"], "people": ["people"],
-    "tools": ["tools"], "recruits": ["recruits"], "cashflow": ["cashflow", "banks", "cftxns"], "memos": ["memos"], "placements": ["placements"],
-    "workspace": ["wsclients", "wstasks", "wsnotes"], "clients": ["clients", "contracts", "orders", "memos"],
+    "tools": ["tools", "bizsheets"], "recruits": ["recruits"], "cashflow": ["cashflow", "banks", "cftxns"], "memos": ["memos"], "placements": ["placements"],
+    "workspace": ["wsclients", "wstasks", "wsnotes"], "clients": ["clients", "clientdocs", "contracts", "orders", "memos"],
     "dashboard": [], "analysis": [],
     "inbox": ["inbox"], "salesai": ["deals", "customers"], "docs": ["documents", "orgprofile"],
     "billing": ["documents"], "expenses": ["expenses"], "timesheets": ["timesheets"], "reminders": ["reminders"],
@@ -773,7 +775,12 @@ def seed_store():
              "status": "見込み", "biz": "RPO事業", "owner": "高嶋", "source": "展示会・イベント", "amount": 0,
              "nextDate": days(3), "nextAction": "初回提案アポの調整", "tags": ["新規"], "note": "展示会で名刺交換。採用強化に関心。", "updated": now()},
         ],
-        # 発注書（クライアント別・件名／金額／日付／ファイルリンク）
+        # クライアント別 書類格納（契約書／秘密保持／発注書／その他・ファイルアップロード or リンク）
+        "clientdocs": [
+            {"id": gid("cd"), "client": "取引先A", "type": "契約書",   "name": "業務委託基本契約書", "date": days(-40), "fileId": "", "fileName": "", "url": "", "note": ""},
+            {"id": gid("cd"), "client": "取引先A", "type": "秘密保持", "name": "NDA",                 "date": days(-42), "fileId": "", "fileName": "", "url": "", "note": ""},
+        ],
+        # 発注書（旧・クライアント別）※書類格納に統合。既存データ保持のため定義は残す
         "orders": [
             {"id": gid("or"), "client": "取引先A", "name": "BPO業務 発注書 4月分", "date": days(-25), "amount": 2400000, "url": "", "note": ""},
             {"id": gid("or"), "client": "取引先C", "name": "SESエンジニア 発注書", "date": days(-4), "amount": 1600000, "url": "", "note": "単価80万×2名"},
@@ -797,12 +804,20 @@ def seed_store():
         ],
         "tools": [
             {"id": gid("k"), "name": "Slack", "url": "https://slack.com", "category": "コミュニケーション", "icon": "💬"},
+            {"id": gid("k"), "name": "LINE", "url": "https://line.me/", "category": "コミュニケーション", "icon": "🟢"},
+            {"id": gid("k"), "name": "LINE公式アカウント", "url": "https://manager.line.biz/", "category": "コミュニケーション", "icon": "📢"},
+            {"id": gid("k"), "name": "Chatwork", "url": "https://www.chatwork.com/", "category": "コミュニケーション", "icon": "💭"},
+            {"id": gid("k"), "name": "Messenger", "url": "https://www.messenger.com/", "category": "コミュニケーション", "icon": "🗨️"},
             {"id": gid("k"), "name": "Gmail", "url": "https://mail.google.com", "category": "コミュニケーション", "icon": "✉️"},
-            {"id": gid("k"), "name": "freee 会計", "url": "https://secure.freee.co.jp", "category": "会計・経理", "icon": "💴"},
-            {"id": gid("k"), "name": "Google Drive", "url": "https://drive.google.com", "category": "ドキュメント", "icon": "📁"},
-            {"id": gid("k"), "name": "Notion", "url": "https://www.notion.so", "category": "ドキュメント", "icon": "📝"},
-            {"id": gid("k"), "name": "Google カレンダー", "url": "https://calendar.google.com", "category": "スケジュール", "icon": "📅"},
+            {"id": gid("k"), "name": "Google ドキュメント", "url": "https://docs.google.com", "category": "Googleドライブ", "icon": "📝"},
+            {"id": gid("k"), "name": "Google スプレッドシート", "url": "https://sheets.google.com", "category": "Googleドライブ", "icon": "📊"},
+            {"id": gid("k"), "name": "Google ドライブ", "url": "https://drive.google.com", "category": "Googleドライブ", "icon": "📁"},
+            {"id": gid("k"), "name": "Google カレンダー", "url": "https://calendar.google.com", "category": "カレンダー", "icon": "📅"},
+            {"id": gid("k"), "name": "freee 会計", "url": "https://secure.freee.co.jp", "category": "その他", "icon": "💴"},
+            {"id": gid("k"), "name": "Notion", "url": "https://www.notion.so", "category": "その他", "icon": "📝"},
         ],
+        # 各事業のスプレッドシート格納場所（事業名 → URL）
+        "bizsheets": {},
         "recruits": [
             {"id": gid("r"), "name": "田中 陽菜", "kana": "たなか はるな", "position": "バックエンドエンジニア", "stage": "面接",     "source": "Airワーク", "airworkId": "AW-10231", "applied": days(-10), "note": "React経験3年。技術力が高く即戦力。",
              "scores": {"skill": 5, "experience": 4, "motivation": 4, "culture": 4, "communication": 3}},
@@ -885,7 +900,9 @@ def fresh_db():
         "store": seed_store(),
         # 秘匿情報（APIキー等）はここに保存し、/api/store では返さない
         "secrets": {"ai_key": "", "chatwork_token": "", "slack_token": "",
-                    "gmail_address": "", "gmail_password": ""},
+                    "gmail_address": "", "gmail_password": "", "frictio_token": ""},
+        # アップロードファイルのメタ情報（実体は UPLOAD_DIR に保存）。/api/store では返さない
+        "files": {},
     }
 
 def load_db():
@@ -920,7 +937,10 @@ def init_db():
             changed = True
     if "secrets" not in DB:
         DB["secrets"] = {"ai_key": "", "chatwork_token": "", "slack_token": "",
-                         "gmail_address": "", "gmail_password": ""}
+                         "gmail_address": "", "gmail_password": "", "frictio_token": ""}
+        changed = True
+    if "files" not in DB:
+        DB["files"] = {}
         changed = True
     # 既存ユーザーの pages に新ページを自動付与しない（権限は管理者が明示的に設定）
     if changed:
@@ -1044,6 +1064,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"rev": DB["rev"]})
         if path == "/api/store":
             return self._api_store_get()
+        if path.startswith("/api/file/"):
+            return self._api_file(path[len("/api/file/"):])
         if path == "/api/cashflow":
             return self._api_cashflow(urlparse(self.path).query)
         if path == "/api/users":
@@ -1066,6 +1088,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._api_users_create()
         if path == "/api/ai":
             return self._api_ai()
+        if path == "/api/upload":
+            return self._api_upload()
         if path == "/api/integrations":
             return self._api_integrations_set()
         if path == "/api/pptx":
@@ -1102,6 +1126,76 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, body, ctype="text/html; charset=utf-8")
         except FileNotFoundError:
             self._send(500, b"app.html not found", ctype="text/plain; charset=utf-8")
+
+    # ---- ファイル格納（契約書・秘密保持・発注書 等）----
+    def _api_upload(self):
+        u = self._current_user()
+        if not u:
+            return self._err(401, "未ログイン")
+        try:
+            n = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            n = 0
+        if n <= 0:
+            return self._err(400, "ファイルがありません")
+        # base64のオーバーヘッド（約1.37倍）を見込んで上限を判定
+        if n > int(MAX_UPLOAD * 1.4) + 4096:
+            return self._err(413, "ファイルが大きすぎます（1ファイル最大15MB）")
+        d = self._body()
+        name = (d.get("name") or "file").strip() or "file"
+        data = d.get("data") or ""
+        if data.startswith("data:") and "," in data:
+            data = data.split(",", 1)[1]
+        try:
+            raw = base64.b64decode(data)
+        except Exception:
+            return self._err(400, "ファイルの形式が不正です")
+        if not raw:
+            return self._err(400, "ファイルが空です")
+        if len(raw) > MAX_UPLOAD:
+            return self._err(413, "ファイルが大きすぎます（1ファイル最大15MB）")
+        fid = "f" + secrets.token_hex(10)
+        ext = os.path.splitext(name)[1]
+        if len(ext) > 12 or "/" in ext or "\\" in ext:
+            ext = ""
+        stored = fid + ext
+        try:
+            os.makedirs(UPLOAD_DIR, exist_ok=True)
+            with open(os.path.join(UPLOAD_DIR, stored), "wb") as f:
+                f.write(raw)
+        except OSError as e:
+            return self._err(500, "保存に失敗しました: %s" % e)
+        mime = (d.get("mime") or "application/octet-stream").strip()[:120]
+        with LOCK:
+            DB.setdefault("files", {})[fid] = {
+                "name": name, "mime": mime, "stored": stored,
+                "size": len(raw), "uploaded": now(), "by": u["id"]}
+            save_db(DB)
+        return self._json(200, {"ok": True, "id": fid, "name": name, "size": len(raw)})
+
+    def _api_file(self, fid):
+        u = self._current_user()
+        if not u:
+            return self._err(401, "未ログイン")
+        fid = (fid or "").split("?")[0].split("/")[0]
+        with LOCK:
+            meta = (DB.get("files") or {}).get(fid)
+        if not meta:
+            return self._err(404, "ファイルが見つかりません")
+        path = os.path.join(UPLOAD_DIR, meta.get("stored", ""))
+        if not os.path.abspath(path).startswith(os.path.abspath(UPLOAD_DIR)) or not os.path.exists(path):
+            return self._err(404, "ファイル本体がありません")
+        try:
+            with open(path, "rb") as f:
+                body = f.read()
+        except OSError as e:
+            return self._err(500, "読み込みに失敗しました: %s" % e)
+        mime = meta.get("mime") or "application/octet-stream"
+        from urllib.parse import quote as _q
+        fn = _q(meta.get("name") or "file")
+        disp = "inline" if (mime.startswith("application/pdf") or mime.startswith("image/")) else "attachment"
+        self._send(200, body, ctype=mime,
+                   extra=[("Content-Disposition", "%s; filename*=UTF-8''%s" % (disp, fn))])
 
     # ---- 認証 ----
     def _api_login(self):

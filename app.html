@@ -225,7 +225,7 @@ const PAGES = [
   {id:'placements', icon:'🤝', name:'人材提案管理', title:'人材提案・案件管理', sub:'候補者ごとの提案状況・リードタイム・売上・報酬・粗利を管理', sect:'業務'},
   {id:'clients', icon:'📇', name:'クライアント管理', title:'クライアント管理', sub:'クライアント別に「情報（HP・契約書・発注書・担当者）」と「打ち合わせ内容」を一元管理', sect:'業務'},
   {id:'workspace', icon:'🗂️', name:'ワークスペース', title:'クライアント・ワークスペース', sub:'クライアント別に議事録とタスクを集約。高嶋・早田で進捗を共有', sect:'業務'},
-  {id:'tools', icon:'🔗', name:'ツール', title:'ツール一元管理', sub:'よく使うツールへのリンク集', sect:'ツール'},
+  {id:'tools', icon:'🔗', name:'ツール', title:'ツール一元管理', sub:'コミュニケーション／Googleドライブ／カレンダー／各事業のシートなどをカテゴリ別に集約', sect:'ツール'},
   {id:'inbox', icon:'📩', name:'返信ボックス', title:'返信ボックス', sub:'メール・Slack・Chatworkの要返信を一覧。AIが返信案を作成', sect:'AI業務サポート'},
   {id:'salesai', icon:'🤝', name:'営業サポート', title:'営業サポート', sub:'顧客・商談の管理とAIによる次アクション提案・文面作成', sect:'AI業務サポート'},
   {id:'docs', icon:'📄', name:'AI文書作成', title:'AI文書作成', sub:'見積・請求・提案・議事録・報告書をAIとPDF/PPTXで作成', sect:'AI業務サポート'},
@@ -234,7 +234,7 @@ const PAGES = [
   {id:'timesheets', icon:'⏱️', name:'勤怠・工数', title:'勤怠・工数', sub:'日次の作業時間を事業・案件別に記録', sect:'AI業務サポート'},
   {id:'reminders', icon:'🔔', name:'定型リマインド', title:'定型リマインド', sub:'月次の定型業務を期日管理', sect:'AI業務サポート'},
 ];
-const PAGE_WRITE={business:['businesses'],sales:['sales','salesdeals'],finance:['finance'],breakeven:['cost'],tasks:['tasks'],contracts:['contracts'],people:['people'],tools:['tools'],recruits:['recruits'],cashflow:['cashflow'],memos:['memos'],placements:['placements'],workspace:['wsclients','wstasks','wsnotes'],clients:['clients','contracts','orders','memos'],dashboard:[],analysis:[],
+const PAGE_WRITE={business:['businesses'],sales:['sales','salesdeals'],finance:['finance'],breakeven:['cost'],tasks:['tasks'],contracts:['contracts'],people:['people'],tools:['tools','bizsheets'],recruits:['recruits'],cashflow:['cashflow'],memos:['memos'],placements:['placements'],workspace:['wsclients','wstasks','wsnotes'],clients:['clients','clientdocs','contracts','orders','memos'],dashboard:[],analysis:[],
   inbox:['inbox'],salesai:['deals','customers'],docs:['documents','orgprofile'],billing:['documents'],expenses:['expenses'],timesheets:['timesheets'],reminders:['reminders']};
 const PAGE_NAME=Object.fromEntries(PAGES.map(p=>[p.id,p.name]));
 
@@ -774,6 +774,13 @@ function jpMonth(m){ const [y,mo]=m.split('-'); return `${y}年${parseInt(mo)}�
 function escapeHtml(s){ return String(s).replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch])); }
 // HTML属性内のインラインJS文字列に安全に埋め込む（'"\ と改行をエスケープ）
 function escapeAttr(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/\\/g,'\\\\').replace(/'/g,'\\u0027').replace(/[\r\n]+/g,' '); }
+// ファイルをサーバー（永続ディスク）へアップロードし {id,name,size} を返す
+async function uploadFile(file){
+  if(!file) return null;
+  if(file.size>15*1024*1024) throw new Error('ファイルは1つ15MBまでです');
+  const dataUrl=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(fr.result);fr.onerror=()=>rej(new Error('ファイルの読み込みに失敗しました'));fr.readAsDataURL(file);});
+  return await api('POST','/api/upload',{name:file.name,mime:file.type||'application/octet-stream',data:dataUrl});
+}
 function cfReload(){ const f=document.getElementById('cf-from'),t=document.getElementById('cf-to'); if(f)cfFrom=f.value; if(t)cfTo=t.value; render(); }
 async function cfEditOpening(){
   const cur=(STORE.cashflow&&STORE.cashflow.opening_balance)||3000000;
@@ -1280,6 +1287,30 @@ function editOrder(id, presetClient){
     ()=>{ if(!fv('o_name').trim()) throw new Error('件名を入力してください');
       return upsert('orders',{id:id||b(),client:fv('o_client'),name:fv('o_name').trim(),date:fv('o_date'),amount:fnum('o_amount'),url:fv('o_url').trim(),note:fv('o_note').trim()},id); });
 }
+const CLDOC_TYPES=['契約書','秘密保持','発注書','その他'];
+function cldocTypeColor(t){ return t==='契約書'?'#6366f1':t==='秘密保持'?'#ef4444':t==='発注書'?'#10b981':'#64748b'; }
+function editClientDoc(id, presetClient, presetType){
+  const x=(STORE.clientdocs||[]).find(z=>z.id===id)||{client:presetClient||'',type:presetType||'契約書',name:'',date:todayISO(),fileId:'',fileName:'',url:'',note:''};
+  const cur=x.fileId?`<div class="muted" style="font-size:12px;margin-bottom:6px">現在の格納ファイル: <a href="/api/file/${x.fileId}" target="_blank" rel="noopener" style="color:var(--accent)">📎 ${escapeHtml(x.fileName||'ファイル')}</a>　<label style="font-size:11px;margin-left:6px"><input type="checkbox" id="cd_remove"> 削除する</label></div>`:'';
+  openModal(id?'書類を編集':'書類を追加',`
+    <div class="field two"><label>種別 / 日付</label>
+      <select id="cd_type">${CLDOC_TYPES.map(t=>`<option${t===x.type?' selected':''}>${t}</option>`).join('')}</select>
+      <input id="cd_date" type="date" value="${x.date||todayISO()}"></div>
+    ${field('書類名','cd_name',escapeHtml(x.name||''))}
+    <div class="field"><label>ファイルを格納（PDF/Word/画像・最大15MB）</label>
+      ${cur}
+      <input id="cd_file" type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.heic"></div>
+    <div class="field"><label>または 外部リンク（Google Drive等のURL）</label>
+      <input id="cd_url" type="url" value="${escapeHtml(x.url||'')}" placeholder="https://…"></div>
+    <div class="field"><label>メモ</label><input id="cd_note" value="${escapeHtml(x.note||'')}"></div>`,
+    async()=>{ const nm=fv('cd_name').trim(); if(!nm) throw new Error('書類名を入力してください');
+      let fileId=x.fileId||'', fileName=x.fileName||'';
+      const rm=document.getElementById('cd_remove'); if(rm&&rm.checked){ fileId=''; fileName=''; }
+      const fi=document.getElementById('cd_file'); const f=fi&&fi.files&&fi.files[0];
+      if(f){ const sv=document.getElementById('modal-save'); if(sv){ sv.textContent='アップロード中…'; sv.disabled=true; }
+        const up=await uploadFile(f); fileId=up.id; fileName=up.name; }
+      return upsert('clientdocs',{id:id||b(),client:x.client,type:fv('cd_type'),name:nm,date:fv('cd_date'),fileId,fileName,url:fv('cd_url').trim(),note:fv('cd_note').trim()},id); });
+}
 function editPerson(id){
   const x=(STORE.people||[]).find(z=>z.id===id)||{name:'',role:'',biz:((STORE.businesses||[])[0]||{}).name||'',type:'正社員',cost:0,joined:todayISO(),rating:'B'};
   const bizOpts=(STORE.businesses||[]).map(z=>z.name);
@@ -1456,27 +1487,99 @@ function runTBParse(){
 }
 
 // ---- ツール一元管理 ----
+const TOOL_CATS=[
+  {key:'コミュニケーション', icon:'💬', desc:'Slack・LINE・公式LINE・Chatwork・Messenger・Gmail など'},
+  {key:'Googleドライブ',   icon:'📁', desc:'ドキュメント・スプレッドシート・ドライブ'},
+  {key:'カレンダー',        icon:'📅', desc:''},
+  {key:'事業スプレッドシート', icon:'📊', desc:'各事業の管理シート格納場所'},
+  {key:'その他',            icon:'🔗', desc:''},
+];
+const TOOL_CAT_KEYS=TOOL_CATS.map(c=>c.key);
+const TOOL_SUGGEST=[
+  {name:'Slack', url:'https://slack.com', category:'コミュニケーション', icon:'💬'},
+  {name:'LINE', url:'https://line.me/', category:'コミュニケーション', icon:'🟢'},
+  {name:'LINE公式アカウント', url:'https://manager.line.biz/', category:'コミュニケーション', icon:'📢'},
+  {name:'Chatwork', url:'https://www.chatwork.com/', category:'コミュニケーション', icon:'💭'},
+  {name:'Messenger', url:'https://www.messenger.com/', category:'コミュニケーション', icon:'🗨️'},
+  {name:'Gmail', url:'https://mail.google.com', category:'コミュニケーション', icon:'✉️'},
+  {name:'Google ドキュメント', url:'https://docs.google.com', category:'Googleドライブ', icon:'📝'},
+  {name:'Google スプレッドシート', url:'https://sheets.google.com', category:'Googleドライブ', icon:'📊'},
+  {name:'Google ドライブ', url:'https://drive.google.com', category:'Googleドライブ', icon:'📁'},
+  {name:'Google カレンダー', url:'https://calendar.google.com', category:'カレンダー', icon:'📅'},
+];
 function renderTools(c,p){
   const ed=canEdit('tools');
-  setHeader(p.title,p.sub, ed?`<button class="btn" onclick="editTool()">＋ ツールを追加</button>`:roBadge());
+  setHeader(p.title,p.sub, ed?`<button class="btn ghost" onclick="addSuggestedTools()">✨ おすすめを一括追加</button><button class="btn" onclick="editTool()">＋ ツールを追加</button>`:roBadge());
   const tools=STORE.tools||[];
-  const cats={}; tools.forEach(t=>{(cats[t.category||'その他']=cats[t.category||'その他']||[]).push(t);});
-  if(!tools.length){ c.innerHTML='<div class="card"><div class="empty">ツールが登録されていません</div></div>'; return; }
-  c.innerHTML=Object.entries(cats).map(([cat,list])=>`
-    <div class="card" style="margin-bottom:16px"><h3>${cat}</h3>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px">
-      ${list.map(t=>`<div style="position:relative;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;align-items:center;gap:10px">
-        <a href="${t.url}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--txt);flex:1;min-width:0">
-          <span style="font-size:22px">${t.icon||'🔗'}</span>
-          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b>${t.name}</b><br><span class="muted" style="font-size:11px">開く ↗</span></span>
-        </a>
-        ${ed?`<button class="icon-btn" onclick="editTool('${t.id}')">✏️</button><button class="icon-btn" onclick="del('tools','${t.id}')">🗑</button>`:''}
-      </div>`).join('')}
-    </div></div>`).join('');
+  const byCat={}; TOOL_CAT_KEYS.forEach(k=>byCat[k]=[]);
+  tools.forEach(t=>{ const k=TOOL_CAT_KEYS.includes(t.category)?t.category:'その他'; byCat[k].push(t); });
+  const tile=t=>`<div class="tool-tile">
+    <a href="${escapeHtml(t.url||'#')}" target="_blank" rel="noopener" class="tool-link">
+      <span class="tool-ico">${t.icon||'🔗'}</span>
+      <span style="min-width:0"><span class="tool-name">${escapeHtml(t.name)}</span><br><span class="muted" style="font-size:11px">開く ↗</span></span>
+    </a>
+    ${ed?`<span class="tool-acts"><button class="icon-btn" onclick="editTool('${t.id}')">✏️</button><button class="icon-btn" onclick="del('tools','${t.id}')">🗑</button></span>`:''}
+  </div>`;
+  const sections=TOOL_CATS.map(cd=>{
+    if(cd.key==='事業スプレッドシート') return toolBizSheetSection(ed);
+    const list=byCat[cd.key]||[];
+    return `<div class="card" style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px">
+        <h3 style="margin:0">${cd.icon} ${cd.key}${cd.desc?` <span class="muted" style="font-size:11px;font-weight:400">${cd.desc}</span>`:''}</h3>
+        ${ed?`<button class="btn ghost sm" onclick="editTool(null,'${escapeAttr(cd.key)}')">＋ 追加</button>`:''}
+      </div>
+      <div class="tool-grid">${list.map(tile).join('')||`<div class="muted" style="font-size:12px">まだありません${ed?'。「＋追加」から登録できます':''}</div>`}</div>
+    </div>`;
+  }).join('');
+  c.innerHTML=sections+`<style>
+    .tool-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+    .tool-tile{position:relative;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;align-items:center;gap:10px;transition:border-color .15s}
+    .tool-tile:hover{border-color:var(--accent)}
+    .tool-link{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--txt);flex:1;min-width:0}
+    .tool-ico{font-size:22px;flex:none}
+    .tool-name{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;max-width:100%}
+    .tool-acts{display:none;flex:none}
+    .tool-tile:hover .tool-acts{display:inline-flex}
+  </style>`;
 }
-function editTool(id){
-  const x=(STORE.tools||[]).find(z=>z.id===id)||{name:'',url:'https://',category:'その他',icon:'🔗'};
-  openModal(id?'ツールを編集':'ツールを追加',`${field('ツール名','t_name',x.name)}${field('URL','t_url',x.url)}${field('カテゴリ','t_cat',x.category)}${field('アイコン（絵文字1つ）','t_icon',x.icon)}`,
+function toolBizSheetSection(ed){
+  const biz=STORE.businesses||[]; const sheets=STORE.bizsheets||{};
+  const rows=biz.map(bz=>{
+    const url=sheets[bz.name]||'';
+    return `<div class="tool-tile">
+      <a ${url?`href="${escapeHtml(url)}" target="_blank" rel="noopener"`:'href="javascript:void(0)" style="opacity:.55;cursor:default"'} class="tool-link">
+        <span class="tool-ico">📊</span>
+        <span style="min-width:0"><span class="tool-name">${escapeHtml(bz.name)}</span><br><span class="muted" style="font-size:11px">${url?'シートを開く ↗':'未設定'}</span></span>
+      </a>
+      ${ed?`<span class="tool-acts"><button class="icon-btn" title="シートURLを設定" onclick="editBizSheet('${escapeAttr(bz.name)}')">✏️</button></span>`:''}
+    </div>`;
+  }).join('')||`<div class="muted" style="font-size:12px">事業が未登録です。「事業管理」で登録してください。</div>`;
+  return `<div class="card" style="margin-bottom:14px">
+    <h3 style="margin:0 0 10px">📊 事業スプレッドシート <span class="muted" style="font-size:11px;font-weight:400">各事業の管理シート格納場所</span></h3>
+    <div class="tool-grid">${rows}</div></div>`;
+}
+function editBizSheet(bizName){
+  const cur=(STORE.bizsheets||{})[bizName]||'';
+  openModal(bizName+' のスプレッドシート',`${field('スプレッドシートのURL','bs_url',escapeHtml(cur),'url')}
+    <p class="muted" style="font-size:11px;margin:-6px 0 0">GoogleスプレッドシートのURLを貼り付けてください。空にすると未設定に戻ります。</p>`,
+    async()=>{ const m={...(STORE.bizsheets||{})}; const v=fv('bs_url').trim(); if(v) m[bizName]=v; else delete m[bizName];
+      STORE.bizsheets=m; await persist('bizsheets'); closeModal(); render(); });
+}
+async function addSuggestedTools(){
+  const existing=new Set((STORE.tools||[]).map(t=>(t.name||'').trim()));
+  const toAdd=TOOL_SUGGEST.filter(s=>!existing.has(s.name));
+  if(!toAdd.length){ toast('おすすめツールは追加済みです'); return; }
+  for(const s of toAdd){ await upsert('tools',{id:b(),...s}); }
+  toast(toAdd.length+'件を追加しました'); render();
+}
+function editTool(id, presetCat){
+  const x=(STORE.tools||[]).find(z=>z.id===id)||{name:'',url:'https://',category:presetCat||'その他',icon:'🔗'};
+  const cats=TOOL_CAT_KEYS.filter(k=>k!=='事業スプレッドシート');
+  if(!cats.includes(x.category)) x.category='その他';
+  openModal(id?'ツールを編集':'ツールを追加',
+    `${field('ツール名','t_name',escapeHtml(x.name))}${field('URL','t_url',escapeHtml(x.url))}
+     ${selField('カテゴリ','t_cat',x.category,cats)}
+     ${field('アイコン（絵文字1つ）','t_icon',escapeHtml(x.icon))}`,
     ()=>upsert('tools',{id:id||b(),name:fv('t_name'),url:fv('t_url'),category:fv('t_cat')||'その他',icon:fv('t_icon')||'🔗'},id));
 }
 
@@ -2216,8 +2319,10 @@ function clRenderInfo(){
   const ed=canEdit('clients');
   const x=(STORE.clients||[]).find(z=>z.id===clientSel); if(!x){ el.innerHTML=''; return; }
   const contracts=(STORE.contracts||[]).filter(c=>c.client===x.name).sort((a,b)=>(a.end||'').localeCompare(b.end||''));
-  const orders=(STORE.orders||[]).filter(o=>o.client===x.name).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  const linkBtn=(url,label)=>url?`<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="color:var(--accent);font-size:11px;text-decoration:none">${label} ↗</a>`:'<span class="muted" style="font-size:11px">リンク未添付</span>';
+  const cdocs=(STORE.clientdocs||[]).filter(d=>d.client===x.name)
+    .sort((a,b)=>(CLDOC_TYPES.indexOf(a.type)-CLDOC_TYPES.indexOf(b.type))||((b.date||'').localeCompare(a.date||'')));
+  const linkBtn=(url,label)=>url?`<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="color:var(--accent);font-size:11px;text-decoration:none">${label} ↗</a>`:'';
+  const fileBtn=(fid,fname)=>fid?`<a href="/api/file/${fid}" target="_blank" rel="noopener" style="color:var(--accent);font-size:11px;text-decoration:none">📎 ${escapeHtml(fname||'ファイル')} ↗</a>`:'';
   el.innerHTML=`<div class="card">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
       <div style="min-width:0"><h3 style="margin:0;overflow:hidden;text-overflow:ellipsis">${escapeHtml(x.name)}</h3>
@@ -2233,24 +2338,35 @@ function clRenderInfo(){
       <b style="font-size:13px">${escapeHtml(x.person||'—')}</b>${x.role?`<span class="muted" style="font-size:11px"> ${escapeHtml(x.role)}</span>`:''}
       ${(x.tel||x.email)?`<div class="muted" style="font-size:12px;margin-top:3px;word-break:break-all">${x.tel?`☎ ${escapeHtml(x.tel)}`:''}${x.tel&&x.email?'　':''}${x.email?`✉ ${escapeHtml(x.email)}`:''}</div>`:''}
     </div>
+    <!-- 書類格納：契約書・秘密保持・発注書・その他（ファイルアップロード or リンク）-->
+    <div style="margin-top:14px;display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:12px;font-weight:700">📎 書類格納 <span class="pill muted">${cdocs.length}</span></div>
+      ${ed?`<button class="icon-btn" title="書類を追加（契約書・秘密保持・発注書）" onclick="editClientDoc(null,'${escapeAttr(x.name)}')">＋</button>`:''}
+    </div>
+    ${CLDOC_TYPES.map(tp=>{
+      const items=cdocs.filter(d=>d.type===tp); if(!items.length && !ed) return '';
+      const col=cldocTypeColor(tp);
+      return `<div style="margin:6px 0 2px"><span style="font-size:11px;font-weight:700;color:${col}">● ${tp}</span> ${ed?`<a onclick="editClientDoc(null,'${escapeAttr(x.name)}','${tp}')" style="cursor:pointer;color:var(--muted);font-size:11px;margin-left:4px">＋追加</a>`:''}</div>
+      ${items.map(d=>`<div class="cl-doc">
+        <div style="display:flex;justify-content:space-between;gap:6px"><b style="font-size:12px">${escapeHtml(d.name||tp)}</b><span class="muted" style="font-size:11px">${d.date?fmtDate(d.date):''}</span></div>
+        ${d.note?`<div class="muted" style="font-size:11px;margin-top:2px">${escapeHtml(d.note)}</div>`:''}
+        <div style="margin-top:5px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          ${fileBtn(d.fileId,d.fileName)}${linkBtn(d.url,'🔗 リンク')}
+          ${(!d.fileId&&!d.url)?'<span class="muted" style="font-size:11px">ファイル未格納</span>':''}
+          ${ed?`<a onclick="editClientDoc('${d.id}','${escapeAttr(x.name)}')" style="cursor:pointer;color:var(--muted);font-size:11px">編集</a><a onclick="del('clientdocs','${d.id}').then(clRenderInfo)" style="cursor:pointer;color:var(--muted);font-size:11px">削除</a>`:''}
+        </div>
+      </div>`).join('')||`<div class="muted" style="font-size:11px;margin-bottom:6px">—</div>`}`;
+    }).join('')}
+    <!-- 契約情報（条件：期間・金額・状態。契約書ファイルは上の書類格納へ）-->
     <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between">
-      <div style="font-size:12px;font-weight:700">📄 契約書 <span class="pill muted">${contracts.length}</span></div>
-      ${ed?`<button class="icon-btn" title="契約を追加" onclick="editContract(null,'${escapeAttr(x.name)}')">＋</button>`:''}
+      <div style="font-size:12px;font-weight:700">📄 契約情報 <span class="pill muted">${contracts.length}</span></div>
+      ${ed?`<button class="icon-btn" title="契約情報を追加" onclick="editContract(null,'${escapeAttr(x.name)}')">＋</button>`:''}
     </div>
     ${contracts.length?contracts.map(ct=>`<div class="cl-doc">
       <div style="display:flex;justify-content:space-between;gap:6px"><b style="font-size:12px">${escapeHtml(ct.type||'契約')}</b><span class="pill ${ct.status==='有効'?'ok':'warn'}" style="font-size:10px">${escapeHtml(ct.status||'')}</span></div>
       <div class="muted" style="font-size:11px;margin-top:2px">${fmtDate(ct.start)}〜${fmtDate(ct.end)}　${yen(ct.amount||0)}</div>
-      <div style="margin-top:4px;display:flex;gap:12px;align-items:center">${linkBtn(ct.fileUrl,'📎 契約書')}${ed?`<a onclick="editContract('${ct.id}')" style="cursor:pointer;color:var(--muted);font-size:11px">編集</a>`:''}</div>
+      <div style="margin-top:4px;display:flex;gap:12px;align-items:center">${linkBtn(ct.fileUrl,'📎 契約書リンク')}${ed?`<a onclick="editContract('${ct.id}')" style="cursor:pointer;color:var(--muted);font-size:11px">編集</a>`:''}</div>
     </div>`).join(''):'<div class="muted" style="font-size:12px;margin-bottom:6px">—</div>'}
-    <div style="margin-top:8px;display:flex;align-items:center;justify-content:space-between">
-      <div style="font-size:12px;font-weight:700">🧾 発注書 <span class="pill muted">${orders.length}</span></div>
-      ${ed?`<button class="icon-btn" title="発注書を追加" onclick="editOrder(null,'${escapeAttr(x.name)}')">＋</button>`:''}
-    </div>
-    ${orders.length?orders.map(o=>`<div class="cl-doc">
-      <div style="display:flex;justify-content:space-between;gap:6px"><b style="font-size:12px">${escapeHtml(o.name||'')}</b><span class="muted" style="font-size:11px">${o.date?fmtDate(o.date):''}</span></div>
-      ${o.amount?`<div class="muted" style="font-size:11px;margin-top:2px">${yen(o.amount)}</div>`:''}
-      <div style="margin-top:4px;display:flex;gap:12px;align-items:center">${linkBtn(o.url,'📎 発注書')}${ed?`<a onclick="editOrder('${o.id}')" style="cursor:pointer;color:var(--muted);font-size:11px">編集</a><a onclick="del('orders','${o.id}').then(clRenderInfo)" style="cursor:pointer;color:var(--muted);font-size:11px">削除</a>`:''}</div>
-    </div>`).join(''):'<div class="muted" style="font-size:12px">—</div>'}
     ${x.note?`<div class="cl-doc" style="margin-top:10px"><div class="muted" style="font-size:11px;margin-bottom:2px">メモ</div><div style="font-size:12px;line-height:1.6;white-space:pre-wrap">${escapeHtml(x.note)}</div></div>`:''}
   </div>`;
 }

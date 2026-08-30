@@ -2275,7 +2275,7 @@ const CL_STATUS=[
   {k:'取引終了', c:'#ef4444'},
 ];
 function clStatusColor(s){ const o=CL_STATUS.find(x=>x.k===s); return o?o.c:'#64748b'; }
-function clStatusPill(s){ return `<span class="pill" style="background:color-mix(in srgb,${clStatusColor(s)} 20%,transparent);color:${clStatusColor(s)};border:1px solid ${clStatusColor(s)}">${escapeHtml(s||'—')}</span>`; }
+function clStatusPill(s){ return `<span class="pill" style="background:color-mix(in srgb,${clStatusColor(s)} 20%,transparent);color:${clStatusColor(s)};border:1px solid ${clStatusColor(s)};white-space:nowrap;flex:none;display:inline-block">${escapeHtml(s||'—')}</span>`; }
 function clOwnerChip(name){ return wsMemberChip(name); }
 // あるクライアント名に紐づく関連データを横断収集
 function clRelated(name){
@@ -2334,7 +2334,7 @@ function clRenderList(){
     const last=clLastMeetingDate(x.name);
     return `<div class="cl-row ${x.id===clientSel?'on':''}" onclick="clientSel='${x.id}';clRenderList();clRenderInfo();clRenderMeetings()">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
-        <b style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(x.name)}</b>
+        <b style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">${escapeHtml(x.name)}</b>
         ${clStatusPill(x.status)}
       </div>
       <div class="muted" style="font-size:11px;margin-top:3px">${last?('最終打合せ '+fmtDate(last)):'打合せ未記録'}</div>

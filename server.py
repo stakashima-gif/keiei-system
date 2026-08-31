@@ -34,7 +34,7 @@ PAGE_COLLECTIONS = {
     "analysis":  ["company", "sales", "finance", "cost", "people"],
     "breakeven": ["cost", "finance"],
     "business":  ["businesses"],
-    "sales":     ["sales", "businesses", "salesdeals"],
+    "sales":     ["sales", "businesses", "salesdeals", "finance"],
     "finance":   ["finance"],
     "tasks":     ["tasks", "businesses"],
     "contracts": ["contracts"],
@@ -57,7 +57,7 @@ PAGE_COLLECTIONS = {
 }
 # 各ページが編集できるデータ種別
 PAGE_WRITE = {
-    "business": ["businesses"], "sales": ["sales", "salesdeals"], "finance": ["finance"],
+    "business": ["businesses"], "sales": ["sales", "salesdeals", "finance"], "finance": ["finance"],
     "breakeven": ["cost"], "tasks": ["tasks"], "contracts": ["contracts"], "people": ["people"],
     "tools": ["tools", "bizsheets"], "recruits": ["recruits"], "cashflow": ["cashflow", "banks", "cftxns"], "memos": ["memos"], "placements": ["placements"],
     "workspace": ["clients", "clientdocs", "contracts", "orders", "memos", "wstasks", "wsnotes"], "clients": ["clients", "clientdocs", "contracts", "orders", "memos", "wstasks", "wsnotes"],

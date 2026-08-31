@@ -233,7 +233,7 @@ const PAGES = [
   {id:'timesheets', icon:'⏱️', name:'勤怠・工数', title:'勤怠・工数', sub:'日次の作業時間を事業・案件別に記録', sect:'AI業務サポート'},
   {id:'reminders', icon:'🔔', name:'定型リマインド', title:'定型リマインド', sub:'月次の定型業務を期日管理', sect:'AI業務サポート'},
 ];
-const PAGE_WRITE={business:['businesses'],sales:['sales','salesdeals'],finance:['finance'],breakeven:['cost'],tasks:['tasks'],contracts:['contracts'],people:['people'],tools:['tools','bizsheets'],recruits:['recruits'],cashflow:['cashflow'],memos:['memos'],placements:['placements'],workspace:['clients','clientdocs','contracts','orders','memos','wstasks','wsnotes'],clients:['clients','clientdocs','contracts','orders','memos','wstasks','wsnotes'],dashboard:[],analysis:[],
+const PAGE_WRITE={business:['businesses'],sales:['sales','salesdeals','finance'],finance:['finance'],breakeven:['cost'],tasks:['tasks'],contracts:['contracts'],people:['people'],tools:['tools','bizsheets'],recruits:['recruits'],cashflow:['cashflow'],memos:['memos'],placements:['placements'],workspace:['clients','clientdocs','contracts','orders','memos','wstasks','wsnotes'],clients:['clients','clientdocs','contracts','orders','memos','wstasks','wsnotes'],dashboard:[],analysis:[],
   inbox:['inbox'],salesai:['deals','customers'],docs:['documents','orgprofile'],billing:['documents'],expenses:['expenses'],timesheets:['timesheets'],reminders:['reminders']};
 const PAGE_NAME=Object.fromEntries(PAGES.map(p=>[p.id,p.name]));
 
@@ -601,6 +601,14 @@ function recomputeSalesFromDeals(){
       row[z.id]=val; row.total+=val; });
     sales.push(row); }
   STORE.sales=sales;
+  // 原価も案件の「支払い」から集計 → 財務(原価/cogs)に連動（案件がある月はその合計。無い月は従来値を保持）
+  const costSum={}, dealMonths={};
+  (STORE.salesdeals||[]).forEach(d=>{ const m=Number(d.month);
+    if(!(m>=0&&m<12)) return; dealMonths[m]=true; costSum[m]=(costSum[m]||0)+(Number(d.cost)||0); });
+  const fin=STORE.finance||[];
+  STORE.finance=Array.from({length:12},(_,i)=>{ const f=fin[i]||{month:i,revenue:0,cogs:0,sga:0,op:0};
+    const cogs=(i in dealMonths)?(costSum[i]||0):(f.cogs||0);
+    const rev=salesTotal(i); return {...f, month:i, cogs, revenue:rev, op:rev-cogs-(f.sga||0)}; });
 }
 function sdEditDeal(id){
   const bizNames=(STORE.businesses||[]).map(z=>z.name);
@@ -626,7 +634,7 @@ function sdEditDeal(id){
       const r=await api('POST','/api/store/salesdeals/item',{value:obj}); REV=r.rev;
       STORE.salesdeals=STORE.salesdeals||[]; const i=STORE.salesdeals.findIndex(z=>z.id===obj.id);
       if(i>=0)STORE.salesdeals[i]=obj; else STORE.salesdeals.push(obj);
-      recomputeSalesFromDeals(); await persist('sales');   // 各事業・全体の売上に直結
+      recomputeSalesFromDeals(); await persist('sales'); await persist('finance');   // 売上＋原価(粗利/営利)に直結
       closeModal(); render();
     });
   dealGpPreview();
@@ -636,7 +644,7 @@ async function delDeal(id){
   if(!confirm('この案件を削除しますか?')) return;
   try{ const r=await api('DELETE','/api/store/salesdeals/item/'+id); REV=r.rev;
     STORE.salesdeals=(STORE.salesdeals||[]).filter(z=>z.id!==id);
-    recomputeSalesFromDeals(); await persist('sales'); render();
+    recomputeSalesFromDeals(); await persist('sales'); await persist('finance'); render();
   }catch(e){ alert(e.message); }
 }
 
@@ -2271,6 +2279,7 @@ const CL_STATUS=[
   {k:'商談中',   c:'#3b82f6'},
   {k:'取引中',   c:'#14b8a6'},
   {k:'既存',     c:'#10b981'},
+  {k:'パートナー', c:'#8b5cf6'},
   {k:'休眠',     c:'#f59e0b'},
   {k:'取引終了', c:'#ef4444'},
 ];
